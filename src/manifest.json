@@ -1,5 +1,12 @@
 {
+    "background": {
+        "scripts": ["background/background.js"],
+        "persistent": false
+    },
+    "description": "Read EPUB files in-browser with a web-like interface.",
+    "homepage_url": "https://github.com/LunarTulip/basalt-ebook-reader",
     "manifest_version": 2,
     "name": "Basalt eBook Reader",
-    "version": "0.1.0"
+    "short_name": "Basalt",
+    "version": "0.1.1"
 }
