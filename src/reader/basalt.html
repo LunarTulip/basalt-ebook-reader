@@ -2,12 +2,27 @@
 <html>
     <head>
         <title>Basalt eBook Reader</title>
+        <link rel="stylesheet" href="basalt.css"></style>
         <script src="jszip.min.js"></script>
         <script src="epub.min.js"></script>
     </head>
     <body>
-        <input type="file" id="choosefile">
-        <div id="test" width="1600px"></div>
+        <header>
+            <input type="file" id="choosefile" /> <!-- For debug -->
+            <div class="navigation">
+                <input type="button" value="Previous" onclick="rendition.prev()" />
+                <select class="tocDropdown" onchange="rendition.display(this.value)"></select>
+                <input type="button" value="Next" onclick="rendition.next()" />
+            </div>
+        </header>
+        <main id="book"></main>
+        <footer>
+            <div class="navigation">
+                <input type="button" value="Previous" onclick="rendition.prev()" />
+                <select class="tocDropdown" onchange="rendition.display(this)"></select>
+                <input type="button" value="Next" onclick="rendition.next()" />
+            </div>
+        </footer>
     </body>
     <script src="basalt.js"></script>
 </html>
