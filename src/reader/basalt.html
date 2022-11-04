@@ -10,17 +10,17 @@
         <header>
             <input type="file" id="choosefile" /> <!-- For debug -->
             <div class="navigation">
-                <input type="button" value="Previous" onclick="rendition.prev()" />
-                <select class="tocDropdown" onchange="rendition.display(this.value)"></select>
-                <input type="button" value="Next" onclick="rendition.next()" />
+                <input type="button" value="Previous" onclick="prevSection()" />
+                <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
+                <input type="button" value="Next" onclick="nextSection()" />
             </div>
         </header>
         <main id="book"></main>
         <footer>
             <div class="navigation">
-                <input type="button" value="Previous" onclick="rendition.prev()" />
-                <select class="tocDropdown" onchange="rendition.display(this)"></select>
-                <input type="button" value="Next" onclick="rendition.next()" />
+                <input type="button" value="Previous" onclick="prevSection()" />
+                <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
+                <input type="button" value="Next" onclick="nextSection()" />
             </div>
         </footer>
     </body>

@@ -10,18 +10,12 @@ body {
 header {
     background: slateblue;
     padding: 10px;
-    /* position: fixed;
-    top: 0;
-    width: 100%; */
 }
 
 footer {
     background: slateblue;
     padding: 10px;
     margin-top: auto;
-    /* position: fixed;
-    bottom: 0;
-    width: 100%; */
 }
 
 .navigation {
