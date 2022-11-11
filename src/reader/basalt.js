@@ -4,23 +4,23 @@
 //   Globals   //
 /////////////////
 
-var book;
-var currentLocation = 0;
-var bookHtmlNode = document.getElementById("book");
-var rendition;
+var bookHtmlNode = document.getElementById("book"); // The HTML node to which to render the book
+
+var book; // The currently-opened epub.js ePub object
+var currentSection; // The currently-rendered epub.js section object
 
 /////////////////
 //   Display   //
 /////////////////
 
 // toc_array: array of book TOC objects, either the top-level TOC or a descendant
-// parent_count: number
-function getTocItems(tocArray, parentCount) {
+// parent_count: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
+function getTocItems(tocArray, ancestorCount) {
     let items = Array();
     tocArray.forEach(tocEntry => {
-        let itemLabel = (String.fromCharCode(160).repeat(parentCount * 4)) + tocEntry.label.trim(); // The trim is to compensate for an epub.js bug at the cost of fidelity to sources whose TOCs *actually* have whitespace
+        let itemLabel = (String.fromCharCode(160).repeat(ancestorCount * 4)) + tocEntry.label.trim(); // The trim is to compensate for an epub.js bug, at the cost of fidelity to sources whose TOCs *actually* have whitespace
         items.push({label: itemLabel, link: tocEntry.href});
-        items = items.concat(getTocItems(tocEntry.subitems, parentCount + 1));
+        items = items.concat(getTocItems(tocEntry.subitems, ancestorCount + 1));
     });
     return items;
 }
@@ -58,20 +58,25 @@ async function setTocDropdowns(toc) {
     });
 }
 
+// item: numerical index into spine, or string href or idref of a spine item
+function displaySection(item) {
+    let section = book.spine.get(item);
+    if (section) {
+        window.scrollTo(0, 0);
+        currentSection = section;
+        section.render(book.load.bind(book)).then(html => bookHtmlNode.innerHTML = html);
+    }
+}
+
 // file: arrayBuffer containing an EPUB file
 async function displayBook(file) {
     book = ePub(file);
-    await book.opened;
+
+    await book.loaded.navigation;
     setTocDropdowns(book.navigation.toc);
 
-    // currentLocation = 0;
-    // displaySection(currentLocation);
-
-    if(rendition) {
-        rendition.destroy();
-    }
-    rendition = book.renderTo("book", {flow: "scrolled-doc"});
-    rendition.display();
+    await book.opened;
+    displaySection(0);
 }
 
 ////////////////////
@@ -79,8 +84,7 @@ async function displayBook(file) {
 ////////////////////
 
 function updateNavigation() {
-    let spineEntry = book.spine.get(rendition.currentLocation().start.cfi);
-    let tocEntry = book.navigation.get(spineEntry.href);
+    let tocEntry = book.navigation.get(currentSection.href);
 
     // Set TOC dropdowns to current location
     if (tocEntry) {
@@ -96,15 +100,22 @@ function updateNavigation() {
 
 // href: href of section to go to
 function goToSectionFromTocDropdown(href) {
-    rendition.display(href).then(_ => updateNavigation());
+    displaySection(href);
+    updateNavigation();
 }
 
 function nextSection() {
-    rendition.next().then(_ => updateNavigation());
+    if (currentSection.index < book.spine.length - 1) {
+        displaySection(currentSection.index + 1);
+        updateNavigation();
+    }
 }
 
 function prevSection() {
-    rendition.prev().then(_ => updateNavigation());
+    if (currentSection.index != 0) {
+        displaySection(currentSection.index - 1);
+        updateNavigation();
+    }
 }
 
 //////////////

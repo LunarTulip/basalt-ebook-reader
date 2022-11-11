@@ -1,28 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
+        <meta charset="utf-8">
         <title>Basalt eBook Reader</title>
-        <link rel="stylesheet" href="basalt.css"></style>
+        <link rel="stylesheet" href="basalt.css">
         <script src="jszip.min.js"></script>
         <script src="epub.min.js"></script>
     </head>
     <body>
         <header>
-            <input type="file" id="choosefile" /> <!-- For debug -->
+            <input type="file" id="choosefile"> <!-- For debug -->
             <div class="navigation">
-                <input type="button" value="Previous" onclick="prevSection()" />
+                <input type="button" value="Previous" onclick="prevSection()">
                 <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
-                <input type="button" value="Next" onclick="nextSection()" />
+                <input type="button" value="Next" onclick="nextSection()">
             </div>
         </header>
-        <main id="book"></main>
+        <main>
+            <div id="book"></div>
+        </main>
         <footer>
             <div class="navigation">
-                <input type="button" value="Previous" onclick="prevSection()" />
+                <input type="button" value="Previous" onclick="prevSection()">
                 <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
-                <input type="button" value="Next" onclick="nextSection()" />
+                <input type="button" value="Next" onclick="nextSection()">
             </div>
         </footer>
+        <script src="basalt.js"></script>
     </body>
-    <script src="basalt.js"></script>
 </html>
