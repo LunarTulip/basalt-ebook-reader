@@ -9,12 +9,15 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 var book; // The currently-opened epub.js ePub object
 var currentSection; // The currently-displayed epub.js Section object
 
+var testSheet = "body {color:gold;}" // Test stylesheet, to be replaced with a more complex system
+
 /////////////////
 //   Display   //
 /////////////////
 
 // tocArray: array of book TOC objects, either the top-level TOC or a descendant
 // ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
+// Returns array of items, where each item is an object mapping "label" to a string to be displayed and "link" to the TOC href associated with that label
 function getTocItems(tocArray, ancestorCount) {
     let items = Array();
     tocArray.forEach(tocEntry => {
@@ -54,8 +57,19 @@ async function setTocDropdowns(toc) {
         let entryElement = document.createElement("option");
         entryElement.setAttribute("value", item.link);
         entryElement.textContent = item.label;
-        tocDropdowns.forEach(dropdown => dropdown.appendChild(entryElement.cloneNode(true)));
+        tocDropdowns.forEach(dropdown => dropdown.append(entryElement.cloneNode(true)));
     });
+}
+
+// html: string representation of HTML doc into which to inject sheet
+// sheet: string representation of CSS stylesheet
+// Returns html, but now with sheet injected in as the first element of its head
+function injectStylesheet(html, sheet) {
+    let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
+    let style = parsedHtml.createElement("style");
+    style.innerHTML = sheet;
+    parsedHtml.getElementsByTagName("head")[0].prepend(style);
+    return new XMLSerializer().serializeToString(parsedHtml);
 }
 
 // item: numerical index into spine, or string href or idref of a spine item
@@ -64,7 +78,10 @@ function displaySection(item) {
     if (section) {
         window.scrollTo(0, 0);
         currentSection = section;
-        section.render(book.load.bind(book)).then(html => bookIframe.setAttribute("srcdoc", html));
+        section.render(book.load.bind(book)).then(html => {
+            let htmlToDisplay = injectStylesheet(html, testSheet);
+            bookIframe.setAttribute("srcdoc", htmlToDisplay);
+        });
     }
 }
 
