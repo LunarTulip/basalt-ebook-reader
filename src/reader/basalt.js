@@ -4,7 +4,7 @@
 //   Globals   //
 /////////////////
 
-var bookHtmlNode = document.getElementById("book"); // The HTML node to which to render the book
+var bookIframe = document.getElementById("book"); // The iframe to which to render the book
 
 var book; // The currently-opened epub.js ePub object
 var currentSection; // The currently-displayed epub.js Section object
@@ -13,8 +13,8 @@ var currentSection; // The currently-displayed epub.js Section object
 //   Display   //
 /////////////////
 
-// toc_array: array of book TOC objects, either the top-level TOC or a descendant
-// parent_count: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
+// tocArray: array of book TOC objects, either the top-level TOC or a descendant
+// ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
 function getTocItems(tocArray, ancestorCount) {
     let items = Array();
     tocArray.forEach(tocEntry => {
@@ -64,7 +64,7 @@ function displaySection(item) {
     if (section) {
         window.scrollTo(0, 0);
         currentSection = section;
-        section.render(book.load.bind(book)).then(html => bookHtmlNode.setAttribute("srcdoc", html));
+        section.render(book.load.bind(book)).then(html => bookIframe.setAttribute("srcdoc", html));
     }
 }
 
