@@ -7,7 +7,7 @@
 var bookHtmlNode = document.getElementById("book"); // The HTML node to which to render the book
 
 var book; // The currently-opened epub.js ePub object
-var currentSection; // The currently-rendered epub.js section object
+var currentSection; // The currently-displayed epub.js Section object
 
 /////////////////
 //   Display   //
@@ -64,7 +64,7 @@ function displaySection(item) {
     if (section) {
         window.scrollTo(0, 0);
         currentSection = section;
-        section.render(book.load.bind(book)).then(html => bookHtmlNode.innerHTML = html);
+        section.render(book.load.bind(book)).then(html => bookHtmlNode.setAttribute("srcdoc", html));
     }
 }
 

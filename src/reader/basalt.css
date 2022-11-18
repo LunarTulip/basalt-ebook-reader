@@ -14,6 +14,10 @@ header {
     padding: 10px;
 }
 
+main {
+    height: 100%;
+}
+
 footer {
     background: slateblue;
     color: black;
@@ -23,4 +27,10 @@ footer {
 
 .navigation {
     text-align: center;
+}
+
+#book {
+    border: none;
+    height: 100%;
+    width: 100%;
 }
