@@ -5,9 +5,13 @@
 /////////////////
 
 var book; // The currently-opened epub.js ePub object
-var bookIframe = document.getElementById("book"); // The iframe to which to render book
 
 var currentSection; // The currently-displayed epub.js Section object
+
+var bookIframe = document.getElementById("book"); // The iframe to which to render book
+var tocDropdowns = Array.from(document.getElementsByClassName("tocDropdown")); // The dropdown TOC-navigation menus
+
+var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
 // var readingHistory = []; // Traversal history through the book // TODO
 
 var testSheet = "body {color:gold;} a {color:orangered;}"; // Test stylesheet, to be replaced with a more complex system
@@ -31,14 +35,14 @@ function getTocItems(tocArray, ancestorCount) {
 
 // toc: book table of contents array
 async function setTocDropdowns(toc) {
-    let tocDropdowns = Array.from(document.getElementsByClassName("tocDropdown"));
-
     // Clear any previously-set TOC
     tocDropdowns.forEach(dropdown => {
         while (dropdown.firstChild) {
             dropdown.removeChild(dropdown.firstChild);
         }
     });
+
+    sectionToTocMap = {};
 
     // Set new TOC
     let tocItems = getTocItems(toc, 0);
@@ -54,11 +58,24 @@ async function setTocDropdowns(toc) {
         tocItems.push({label: "[End]", link: lastSpineHref}); // Improve label?
     }
 
+    // Write TOC to TOC dropdowns
     tocItems.forEach(item => {
         let entryElement = document.createElement("option");
         entryElement.setAttribute("value", item.link);
         entryElement.textContent = item.label;
         tocDropdowns.forEach(dropdown => dropdown.append(entryElement.cloneNode(true)));
+    });
+
+    // Map TOC for use in future dropdown-updating
+    book.spine.items.forEach(spineItem => {
+        let firstMatchingTocItem = tocItems.find(tocItem => tocItem.link.split("#")[0] === spineItem.href);
+        let lastMatchingTocItem = tocItems.findLast(tocItem => tocItem.link.split("#")[0] === spineItem.href);
+        if (firstMatchingTocItem) {
+            sectionToTocMap[spineItem.index] = {"header": firstMatchingTocItem.link, "footer": lastMatchingTocItem.link};
+        } else {
+            let lastItemHit = sectionToTocMap[spineItem.index - 1]["footer"];
+            sectionToTocMap[spineItem.index] = {"header": lastItemHit, "footer": lastItemHit};
+        }
     });
 }
 
@@ -118,6 +135,9 @@ async function displayBook(file) {
     await book.loaded.navigation;
     setTocDropdowns(book.navigation.toc);
 
+    await book.loaded.metadata;
+    document.title = "Basalt eBook Reader: " + book.packaging.metadata.title;
+
     await book.opened;
     displaySection(0);
 }
@@ -127,18 +147,10 @@ async function displayBook(file) {
 ////////////////////
 
 function updateNavigation() {
-    let tocEntry = book.navigation.get(currentSection.href);
-
-    // Set TOC dropdowns to current location
-    if (tocEntry) {
-        Array.from(document.getElementsByClassName("tocDropdown")).forEach(dropdown => {
-            dropdown.value = tocEntry.href;
-            console.info(tocEntry.href);
-        });
-    } else {
-        let tocIndex = 0;
-        // Build map from spine entries to TOC entries and use that?
-    }
+    let headerDropdown = tocDropdowns[0];
+    headerDropdown.value = sectionToTocMap[currentSection.index]["header"];
+    let footerDropdown = tocDropdowns[1];
+    footerDropdown.value = sectionToTocMap[currentSection.index]["footer"];
 }
 
 // item: numerical index into spine, or string href or idref of spine item
