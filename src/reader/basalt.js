@@ -4,12 +4,13 @@
 //   Globals   //
 /////////////////
 
-var bookIframe = document.getElementById("book"); // The iframe to which to render the book
-
 var book; // The currently-opened epub.js ePub object
-var currentSection; // The currently-displayed epub.js Section object
+var bookIframe = document.getElementById("book"); // The iframe to which to render book
 
-var testSheet = "body {color:gold;}" // Test stylesheet, to be replaced with a more complex system
+var currentSection; // The currently-displayed epub.js Section object
+// var readingHistory = []; // Traversal history through the book // TODO
+
+var testSheet = "body {color:gold;} a {color:orangered;}"; // Test stylesheet, to be replaced with a more complex system
 
 /////////////////
 //   Display   //
@@ -19,7 +20,7 @@ var testSheet = "body {color:gold;}" // Test stylesheet, to be replaced with a m
 // ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
 // Returns array of items, where each item is an object mapping "label" to a string to be displayed and "link" to the TOC href associated with that label
 function getTocItems(tocArray, ancestorCount) {
-    let items = Array();
+    let items = [];
     tocArray.forEach(tocEntry => {
         let itemLabel = (String.fromCharCode(160).repeat(ancestorCount * 4)) + tocEntry.label.trim(); // The trim is to compensate for an epub.js bug, at the cost of fidelity to sources whose TOCs *actually* have whitespace
         items.push({label: itemLabel, link: tocEntry.href});
@@ -61,14 +62,39 @@ async function setTocDropdowns(toc) {
     });
 }
 
-// html: string representation of HTML doc into which to inject sheet
+// doc: HTML doc into whose head sheet should be prepended
 // sheet: string representation of CSS stylesheet
-// Returns html, but now with sheet injected in as the first element of its head
-function injectStylesheet(html, sheet) {
-    let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
-    let style = parsedHtml.createElement("style");
+function injectStylesheet(doc, sheet) {
+    let style = doc.createElement("style");
     style.innerHTML = sheet;
-    parsedHtml.getElementsByTagName("head")[0].prepend(style);
+    doc.getElementsByTagName("head")[0].prepend(style);
+}
+
+// doc: HTML doc to modify links within
+function modifyLinks(doc) {
+    let links = doc.getElementsByTagName("a");
+    // let linkHref;
+    Array.from(links).forEach(link => {
+        let linkHref = link.getAttribute("href");
+        if (linkHref) {
+            // Still need
+            if (book.spine.get(linkHref)) {
+                link.setAttribute("onclick", 'parent.openSection("' + encodeURI(linkHref) + '"); return false;');
+                link.setAttribute("href", "#"); // Any better way to do the href to give useful previews? (If so, maybe do it on the navigation buttons too.)
+            } else {
+                link.setAttribute("onclick", 'parent.window.open("' + encodeURI(linkHref) + '", "_blank"); return false;');
+            }
+        }
+    })
+}
+
+// html: string representationn of HTML doc to prepare
+function prepareHtmlForDisplay(html) {
+    let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
+
+    injectStylesheet(parsedHtml, testSheet);
+    modifyLinks(parsedHtml);
+
     return new XMLSerializer().serializeToString(parsedHtml);
 }
 
@@ -79,7 +105,7 @@ function displaySection(item) {
         window.scrollTo(0, 0);
         currentSection = section;
         section.render(book.load.bind(book)).then(html => {
-            let htmlToDisplay = injectStylesheet(html, testSheet);
+            let htmlToDisplay = prepareHtmlForDisplay(html);
             bookIframe.setAttribute("srcdoc", htmlToDisplay);
         });
     }
@@ -115,9 +141,9 @@ function updateNavigation() {
     }
 }
 
-// href: href of section to go to
-function goToSectionFromTocDropdown(href) {
-    displaySection(href);
+// item: numerical index into spine, or string href or idref of spine item
+function openSection(item) {
+    displaySection(item);
     updateNavigation();
 }
 

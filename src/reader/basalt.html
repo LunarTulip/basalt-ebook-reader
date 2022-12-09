@@ -12,17 +12,17 @@
             <input type="file" id="choosefile"> <!-- For debug -->
             <div class="navigation">
                 <input type="button" value="Previous" onclick="prevSection()">
-                <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
+                <select class="tocDropdown" onchange="openSection(this.value)"></select>
                 <input type="button" value="Next" onclick="nextSection()">
             </div>
         </header>
         <main>
-            <iframe id="book" sandbox="allow-same-origin"></iframe>
+            <iframe id="book"></iframe>
         </main>
         <footer>
             <div class="navigation">
                 <input type="button" value="Previous" onclick="prevSection()">
-                <select class="tocDropdown" onchange="goToSectionFromTocDropdown(this.value)"></select>
+                <select class="tocDropdown" onchange="openSection(this.value)"></select>
                 <input type="button" value="Next" onclick="nextSection()">
             </div>
         </footer>
