@@ -20,24 +20,7 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 
 // for injection into book sections
 
-var navigation = document.createElement("div"); // Navigation header/footer node
-
-var previous = document.createElement("input");
-previous.setAttribute("type", "button");
-previous.setAttribute("value", "Previous");
-previous.setAttribute("onclick", "parent.prevSection()");
-
-var tocDropdown = document.createElement("select");
-tocDropdown.setAttribute("onchange", "parent.displaySection(this.value)");
-
-var next = document.createElement("input");
-next.setAttribute("type", "button");
-next.setAttribute("value", "Next");
-next.setAttribute("onclick", "parent.nextSection()");
-
-navigation.append(previous);
-navigation.append(tocDropdown);
-navigation.append(next);
+var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation header/footer node
 
 /////////////////
 //   Display   //
@@ -58,6 +41,8 @@ function getTocItems(tocArray, ancestorCount) {
 
 // toc: book table of contents array
 async function setTocDropdown(toc) {
+    let tocDropdown = navigation.getElementsByTagName("select")[0];
+
     // Clear any previously-set TOC
     while (tocDropdown.firstChild) {
         tocDropdown.removeChild(tocDropdown.firstChild);
@@ -118,6 +103,28 @@ function modifyLinks(doc) {
     })
 }
 
+// doc: HTML doc to check uniqueness against
+// baseName: name to use if possible, or use in modified form otherwise
+// Returns basename with as many underscores prepended as necessary to make sure nothing in doc has that class name
+function getUniqueClassName(doc, baseName) {
+    let className = baseName;
+    while (doc.getElementsByClassName(className).length > 0) {
+        className = "_" + className;
+    }
+    return className;
+}
+
+// doc: HTML doc to check uniqueness against
+// baseName: name to use if possible, or use in modified form otherwise
+// Returns basename with as many underscores prepended as necessary to make sure nothing in doc has that id name
+function getUniqueIdName(doc, baseName) {
+    let idName = baseName;
+    while (doc.getElementById(idName)) {
+        idName = "_" + idName;
+    }
+    return idName;
+}
+
 // sheet: string representation of CSS stylesheet
 // bodyReplacement: string to replace body element selectors with
 // htmlReplacement: string to replace html element selectors
@@ -143,27 +150,12 @@ function replaceBodyAndHtmlStyles(sheet, bodyReplacement, htmlReplacement) {
 
 // doc: HTML doc into whose body the navigation header and footer should be injected
 async function injectNavigationAndStyles(doc) {
-    // Get non-colliding class/id names for the sections to be injected
-    let navigationClassName = "basaltnav";
-    while (doc.getElementsByClassName(navigationClassName).length > 0) {
-        navigationClassName = "_" + navigationClassName;
-    }
-    let headerIdName = "basaltheader";
-    while (doc.getElementById(headerIdName)) {
-        headerIdName = "_" + headerIdName;
-    }
-    let htmlClassName = "basaltmainhtml";
-    while (doc.getElementsByClassName(htmlClassName).length > 0) {
-        htmlClassName = _ + htmlClassName;
-    }
-    let bodyClassName = "basaltmainbody";
-    while (doc.getElementsByClassName(bodyClassName).length > 0) {
-        bodyClassName = "_" + bodyClassName;
-    }
-    let footerIdName = "basaltfooter";
-    while (doc.getElementById(footerIdName)) {
-        footerIdName = "_" + footerIdName;
-    }
+    let navigationClassName = getUniqueClassName(doc, "basaltnav");
+    let ignoreStylesClassName = getUniqueClassName(doc, "basaltignorestyles");
+    let headerIdName = getUniqueIdName(doc, "basaltheader");
+    let htmlClassName = getUniqueClassName(doc, "basaltmainhtml");
+    let bodyClassName = getUniqueClassName(doc, "basaltmainbody");
+    let footerIdName = getUniqueIdName(doc, "basaltfooter");
 
     // Move pre-injection html styles and body content and styles into main
     let mainHtml = doc.createElement("main");
@@ -206,7 +198,7 @@ async function injectNavigationAndStyles(doc) {
 
     let stylesheetBearingNodes = doc.querySelectorAll("style, link[rel=stylesheet]");
     for (let node of stylesheetBearingNodes) {
-        // This text-retrieval step really doesn't seem like it should be necessary? But links' sheet attributes are null at this point in the program, for some reason, so the workaround is required.
+        // This text-retrieval step really doesn't seem like it should be necessary? But document.styleSheets is empty at this point in the program, and the individual styles and links' sheet attributes are null, so the workaround is required.
         let nodeSheet;
         if (node.tagName == "style") {
             nodeSheet = node.innerHTML;
@@ -219,27 +211,34 @@ async function injectNavigationAndStyles(doc) {
             sheetStyleNode.innerHTML = sheetWithReplacements;
             node.parentNode.replaceChild(sheetStyleNode, node);
         }
-        // Add some sort of handling for @import-derived stylesheets
+        // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard.
     }
 
     doc.body.append(mainHtml);
 
     // Inject navigation sections
-    let testCloseBookButton = doc.createElement("input"); // Temporary button for use while in development; find something neater long-term
-    testCloseBookButton.setAttribute("type", "button");
-    testCloseBookButton.setAttribute("value", "Close book");
-    testCloseBookButton.setAttribute("onclick", "parent.closeBook()");
+    let testCloseBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild); // Temporary button for use while in development; find something neater long-term
+    testCloseBookButton.classList.add(ignoreStylesClassName);
 
     let docNav = doc.importNode(navigation, true);
+    docNav.classList.add(ignoreStylesClassName);
     docNav.classList.add(navigationClassName);
+    for (let child of docNav.children) {
+        child.classList.add(ignoreStylesClassName);
+    }
+    for (let child of docNav.getElementsByTagName("select")[0].children) {
+        child.classList.add(ignoreStylesClassName);
+    }
 
     let header = doc.createElement("header");
     header.id = headerIdName;
+    header.classList.add(ignoreStylesClassName);
     header.append(testCloseBookButton);
     header.append(docNav.cloneNode(true));
 
     let footer = doc.createElement("footer");
     footer.id = footerIdName;
+    footer.classList.add(ignoreStylesClassName);
     footer.append(docNav);
 
     doc.body.prepend(header);
@@ -250,7 +249,7 @@ async function injectNavigationAndStyles(doc) {
     Array.from(doc.querySelectorAll("#" + footerIdName + ' select [value="' + sectionToTocMap[currentSection.index].footer + '"]')).at(-1).setAttribute("selected", "selected");
 
     let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
-    style.innerHTML = "body {all: unset; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh;} a {color:orangered;} #" + headerIdName + " {all: unset; background: slateblue; color: black; padding: 10px;} ." + bodyClassName + "{flex-grow: 1;} #" + footerIdName + " {all: unset; background: slateblue; color: black; padding: 10px; margin-top: auto;} ." + navigationClassName + " {all: unset; text-align: center;}";
+    style.innerHTML = "body {all: initial; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert} #" + headerIdName + " {all: initial; background: slateblue; padding: 10px;} #" + footerIdName + " {all: initial; background: slateblue; padding: 10px; margin-top: auto;} ." + navigationClassName + " {text-align: center;}";
     doc.head.append(style);
 }
 
