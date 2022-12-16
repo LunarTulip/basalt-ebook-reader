@@ -88,21 +88,24 @@ async function setTocDropdown(toc) {
 // link: string representation of URI-encoded href
 // Returns object with properties "internal" (bool, true if internal link, false if external) and "uri" (string | null, path to linked target from epub root if internal, untouched input link if external, null if relative-link-to-outside-epub-root)
 function parseLink(link) {
-    if (link.startsWith("/")) {
-        return {internal: true, uri: link};
-    } else if (link.includes(":/")) {
+    if (link.includes(":/")) {
         return {internal: false, uri: link};
     } else {
-        let relativeLinkTargetPath = currentDirectory + "/" + link;
-        relativeLinkTargetPath = relativeLinkTargetPath.replaceAll("/./", "/");
-        while (relativeLinkTargetPath.includes("/..")) {
-            if (relativeLinkTargetPath.startsWith("/..")) {
+        let linkTargetPath;
+        if (link.startsWith("/")) {
+            linkTargetPath = link;
+        } else {
+            linkTargetPath = currentDirectory + "/" + link;
+        }
+        linkTargetPath = linkTargetPath.replaceAll("/./", "/");
+        while (linkTargetPath.includes("/..")) {
+            if (linkTargetPath.startsWith("/..")) {
                 return {internal: true, uri: null};
             }
-            relativeLinkTargetPath = relativeLinkTargetPath.replace(/\/[^\/]+?\/\.\./, "");
+            linkTargetPath = linkTargetPath.replace(/\/[^\/]+?\/\.\./, "");
         }
-        console.info({currentDirectory: currentDirectory, originalLink: link, parsedLink: relativeLinkTargetPath});
-        return {internal: true, uri: relativeLinkTargetPath};
+        console.info({currentDirectory: currentDirectory, originalLink: link, parsedLink: linkTargetPath});
+        return {internal: true, uri: linkTargetPath};
     }
 }
 
@@ -130,7 +133,7 @@ function modifyLinks(doc) {
                 link.setAttribute("onclick", 'parent.window.open("' + encodeURI(linkHref) + '", "_blank"); return false;');
             }
         }
-    })
+    });
 }
 
 // doc: HTML doc to check uniqueness against
