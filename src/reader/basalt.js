@@ -8,11 +8,11 @@
 
 var book; // The currently-opened epub.js ePub object
 var currentSection; // The currently-displayed epub.js Section object
+var currentDirectory; // Path to the directory housing currentSection
 
 // basalt.js internal logic
 
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
-// var readingHistory = []; // Traversal history through the book // TODO
 
 // basalt.html elements
 
@@ -20,11 +20,11 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 
 // for injection into book sections
 
-var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation header/footer node
+var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation node for insertion into header/footer
 
-/////////////////
-//   Display   //
-/////////////////
+///////////////////
+//   Rendering   //
+///////////////////
 
 // tocArray: array of book TOC objects, either the top-level TOC or a descendant
 // ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
@@ -85,6 +85,27 @@ async function setTocDropdown(toc) {
     });
 }
 
+// link: string representation of URI-encoded href
+// Returns object with properties "internal" (bool, true if internal link, false if external) and "uri" (string | null, path to linked target from epub root if internal, untouched input link if external, null if relative-link-to-outside-epub-root)
+function parseLink(link) {
+    if (link.startsWith("/")) {
+        return {internal: true, uri: link};
+    } else if (link.includes(":/")) {
+        return {internal: false, uri: link};
+    } else {
+        let relativeLinkTargetPath = currentDirectory + "/" + link;
+        relativeLinkTargetPath = relativeLinkTargetPath.replaceAll("/./", "/");
+        while (relativeLinkTargetPath.includes("/..")) {
+            if (relativeLinkTargetPath.startsWith("/..")) {
+                return {internal: true, uri: null};
+            }
+            relativeLinkTargetPath = relativeLinkTargetPath.replace(/\/[^\/]+?\/\.\./, "");
+        }
+        console.info({currentDirectory: currentDirectory, originalLink: link, parsedLink: relativeLinkTargetPath});
+        return {internal: true, uri: relativeLinkTargetPath};
+    }
+}
+
 // doc: HTML doc to modify links within
 function modifyLinks(doc) {
     let links = doc.getElementsByTagName("a");
@@ -92,10 +113,19 @@ function modifyLinks(doc) {
     Array.from(links).forEach(link => {
         let linkHref = link.getAttribute("href");
         if (linkHref) {
-            // Still need
-            if (book.spine.get(linkHref)) {
-                link.setAttribute("onclick", 'parent.displaySection("' + encodeURI(linkHref) + '"); return false;');
-                link.setAttribute("href", "#"); // Any better way to do the href to give useful previews? (If so, maybe do it on the navigation buttons too.)
+            let parsedHref = parseLink(linkHref);
+            if (parsedHref.uri === null) {
+                link.setAttribute("onclick", 'parent.alert("Invalid link ' + linkHref + ' pointing outside of the EPUB container."); return false;');
+                link.setAttribute("href", "#");
+            } else if (parsedHref.internal) {
+                let spineItem = book.spine.items.find(section => section.canonical === encodeURI(parsedHref.uri));
+                if (spineItem) {
+                    link.setAttribute("onclick", "parent.displaySection(" + spineItem.index.toString() + "); return false;");
+                    link.setAttribute("href", "#"); // Any better way to do the href to give useful previews? (If so, maybe do it on the navigation buttons too.)
+                } else {
+                    link.setAttribute("onclick", 'parent.alert("Invalid link ' + linkHref + " (" + parsedHref.uri + ') pointing to nonexistent section in EPUB."); return false;');
+                    link.setAttribute("href", "#");
+                }
             } else {
                 link.setAttribute("onclick", 'parent.window.open("' + encodeURI(linkHref) + '", "_blank"); return false;');
             }
@@ -157,7 +187,7 @@ async function injectNavigationAndStyles(doc) {
     let bodyClassName = getUniqueClassName(doc, "basaltmainbody");
     let footerIdName = getUniqueIdName(doc, "basaltfooter");
 
-    // Move pre-injection html styles and body content and styles into main
+    // Move html element styles and body element content and styles into main
     let mainHtml = doc.createElement("main");
     mainHtml.classList.add(htmlClassName);
 
@@ -174,7 +204,7 @@ async function injectNavigationAndStyles(doc) {
         doc.documentElement.removeAttribute("style");
     }
 
-    let mainBody = doc.createElement("div"); // Any more appropriate semantic tag to use here?
+    let mainBody = doc.createElement("section");
     mainBody.classList.add(bodyClassName);
 
     if (doc.body.id) {
@@ -249,7 +279,7 @@ async function injectNavigationAndStyles(doc) {
     Array.from(doc.querySelectorAll("#" + footerIdName + ' select [value="' + sectionToTocMap[currentSection.index].footer + '"]')).at(-1).setAttribute("selected", "selected");
 
     let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
-    style.innerHTML = "body {all: initial; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert} #" + headerIdName + " {all: initial; background: slateblue; padding: 10px;} #" + footerIdName + " {all: initial; background: slateblue; padding: 10px; margin-top: auto;} ." + navigationClassName + " {text-align: center;}";
+    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} ." + navigationClassName + " {text-align: center;}";
     doc.head.append(style);
 }
 
@@ -269,6 +299,7 @@ async function displaySection(item) {
     if (section) {
         window.scrollTo(0, 0);
         currentSection = section;
+        currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/");
         section.render(book.load.bind(book)).then(async html => {
             let htmlToDisplay = await prepareHtmlForDisplay(html);
             bookIframe.setAttribute("srcdoc", htmlToDisplay);

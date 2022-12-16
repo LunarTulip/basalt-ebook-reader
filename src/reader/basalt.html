@@ -7,11 +7,11 @@
         <script src="libraries/jszip.min.js"></script>
         <script src="libraries/epub.min.js"></script>
         <template id="navtemplate">
-            <div>
+            <nav>
                 <input type="button" value="Previous" onclick="parent.prevSection()">
                 <select onchange="parent.displaySection(this.value)"></select>
                 <input type="button" value="Next" onclick="parent.nextSection()">
-            </div>
+            </nav>
         </template>
         <template id="closebuttontemplate">
             <input type="button" value="Close book" onclick="parent.closeBook()">
