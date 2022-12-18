@@ -104,36 +104,16 @@ function parseLink(link) {
             }
             linkTargetPath = linkTargetPath.replace(/\/[^\/]+?\/\.\./, "");
         }
-        console.info({currentDirectory: currentDirectory, originalLink: link, parsedLink: linkTargetPath});
         return {internal: true, uri: linkTargetPath};
     }
 }
 
-// doc: HTML doc to modify links within
-function modifyLinks(doc) {
-    let links = doc.getElementsByTagName("a");
-    // let linkHref;
-    Array.from(links).forEach(link => {
-        let linkHref = link.getAttribute("href");
-        if (linkHref) {
-            let parsedHref = parseLink(linkHref);
-            if (parsedHref.uri === null) {
-                link.setAttribute("onclick", 'parent.alert("Invalid link ' + linkHref + ' pointing outside of the EPUB container."); return false;');
-                link.setAttribute("href", "#");
-            } else if (parsedHref.internal) {
-                let spineItem = book.spine.items.find(section => section.canonical === encodeURI(parsedHref.uri));
-                if (spineItem) {
-                    link.setAttribute("onclick", "parent.displaySection(" + spineItem.index.toString() + "); return false;");
-                    link.setAttribute("href", "#"); // Any better way to do the href to give useful previews? (If so, maybe do it on the navigation buttons too.)
-                } else {
-                    link.setAttribute("onclick", 'parent.alert("Invalid link ' + linkHref + " (" + parsedHref.uri + ') pointing to nonexistent section in EPUB."); return false;');
-                    link.setAttribute("href", "#");
-                }
-            } else {
-                link.setAttribute("onclick", 'parent.window.open("' + encodeURI(linkHref) + '", "_blank"); return false;');
-            }
-        }
-    });
+// doc: HTML doc to inject script into
+function injectUiScript(doc) {
+    let scriptUri = browser.runtime.getURL("reader/basalt-ui.js");
+    let scriptElement = doc.createElement("script");
+    scriptElement.setAttribute("src", scriptUri);
+    doc.head.append(scriptElement);
 }
 
 // doc: HTML doc to check uniqueness against
@@ -183,12 +163,13 @@ function replaceBodyAndHtmlStyles(sheet, bodyReplacement, htmlReplacement) {
 
 // doc: HTML doc into whose body the navigation header and footer should be injected
 async function injectNavigationAndStyles(doc) {
-    let navigationClassName = getUniqueClassName(doc, "basaltnav");
     let ignoreStylesClassName = getUniqueClassName(doc, "basaltignorestyles");
     let headerIdName = getUniqueIdName(doc, "basaltheader");
+    let footerIdName = getUniqueIdName(doc, "basaltfooter");
+    let closeButtonIdName = getUniqueIdName(doc, "basaltclosebook");
+    let navigationClassName = getUniqueClassName(doc, "basaltnav");
     let htmlClassName = getUniqueClassName(doc, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(doc, "basaltmainbody");
-    let footerIdName = getUniqueIdName(doc, "basaltfooter");
 
     // Move html element styles and body element content and styles into main
     let mainHtml = doc.createElement("main");
@@ -250,12 +231,13 @@ async function injectNavigationAndStyles(doc) {
     doc.body.append(mainHtml);
 
     // Inject navigation sections
-    let testCloseBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild); // Temporary button for use while in development; find something neater long-term
-    testCloseBookButton.classList.add(ignoreStylesClassName);
+    let closeBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild);
+    closeBookButton.id = closeButtonIdName;
+    closeBookButton.classList.add(ignoreStylesClassName);
 
     let docNav = doc.importNode(navigation, true);
-    docNav.classList.add(ignoreStylesClassName);
     docNav.classList.add(navigationClassName);
+    docNav.classList.add(ignoreStylesClassName);
     for (let child of docNav.children) {
         child.classList.add(ignoreStylesClassName);
     }
@@ -266,7 +248,7 @@ async function injectNavigationAndStyles(doc) {
     let header = doc.createElement("header");
     header.id = headerIdName;
     header.classList.add(ignoreStylesClassName);
-    header.append(testCloseBookButton);
+    header.append(closeBookButton);
     header.append(docNav.cloneNode(true));
 
     let footer = doc.createElement("footer");
@@ -282,7 +264,7 @@ async function injectNavigationAndStyles(doc) {
     Array.from(doc.querySelectorAll("#" + footerIdName + ' select [value="' + sectionToTocMap[currentSection.index].footer + '"]')).at(-1).setAttribute("selected", "selected");
 
     let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
-    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} ." + navigationClassName + " {text-align: center;}";
+    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
     doc.head.append(style);
 }
 
@@ -290,7 +272,8 @@ async function injectNavigationAndStyles(doc) {
 async function prepareHtmlForDisplay(html) {
     let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
 
-    modifyLinks(parsedHtml);
+    injectUiScript(parsedHtml);
+    // modifyLinks(parsedHtml);
     await injectNavigationAndStyles(parsedHtml);
 
     return new XMLSerializer().serializeToString(parsedHtml);
@@ -321,13 +304,24 @@ async function openBook(file) {
     document.title = "Basalt eBook Reader: " + book.packaging.metadata.title;
 
     await book.opened;
-    bookIframe.removeAttribute("src");
-    await displaySection(0);
+    let firstLinearSectionIndex = 0;
+    while (firstLinearSectionIndex < book.spine.length) {
+        if (book.spine.get(firstLinearSectionIndex).linear) {
+            await displaySection(firstLinearSectionIndex);
+            bookIframe.removeAttribute("src");
+            return;
+        } else {
+            firstLinearSectionIndex += 1;
+        }
+    }
+
+    alert("Error: can't open book due to ill-formed spine. (All spine sections are nonlinear.)");
 }
 
 function closeBook() {
-    bookIframe.removeAttribute("srcdoc");
+    document.title = "Basalt eBook Reader: Library";
     bookIframe.setAttribute("src", "library.html");
+    bookIframe.removeAttribute("srcdoc");
 }
 
 // Save current srcdoc when closing and then have a resume function in the library?
@@ -337,14 +331,26 @@ function closeBook() {
 ////////////////////
 
 async function nextSection() {
-    if (currentSection.index < book.spine.length - 1) {
-        await displaySection(currentSection.index + 1);
+    let nextLinearSectionIndex = currentSection.index + 1;
+    while (nextLinearSectionIndex < book.spine.length) {
+        if (book.spine.get(nextLinearSectionIndex).linear) {
+            await displaySection(nextLinearSectionIndex);
+            return;
+        } else {
+            nextLinearSectionIndex += 1;
+        }
     }
 }
 
 async function prevSection() {
-    if (currentSection.index != 0) {
-        await displaySection(currentSection.index - 1);
+    let prevLinearSectionIndex = currentSection.index - 1;
+    while (prevLinearSectionIndex >= 0) {
+        if (book.spine.get(prevLinearSectionIndex).linear) {
+            await displaySection(prevLinearSectionIndex);
+            return;
+        } else {
+            prevLinearSectionIndex -= 1;
+        }
     }
 }
 
@@ -352,8 +358,24 @@ async function prevSection() {
 //   Main   //
 //////////////
 
-window.addEventListener("message", bookFileBuffer => {
-    if (bookFileBuffer.origin === "null" && bookFileBuffer.data.messageType === "BasaltBookLoad") {
-        openBook(bookFileBuffer.data.messageContent);
+window.addEventListener("message", basaltMessage => {
+    if (basaltMessage.origin === browser.runtime.getURL("").slice(undefined, -1)) {
+        console.info("Message received from correct origin.")
+        if (basaltMessage.data.messageType === "BasaltOpenBook") {
+            console.info("Started opening book.")
+            openBook(basaltMessage.data.book);
+        } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
+            console.info("Started closing book.")
+            closeBook();
+        } else if (basaltMessage.data.messageType === "BasaltNextSection") {
+            console.info("Started going to next section.")
+            nextSection();
+        } else if (basaltMessage.data.messageType === "BasaltPrevSection") {
+            console.info("Started going to previous section.")
+            prevSection();
+        } else if (basaltMessage.data.messageType === "BasaltDisplaySection") {
+            console.info("Started displaying section " + basaltMessage.data.item + ".")
+            displaySection(basaltMessage.data.item);
+        }
     }
 });
