@@ -21,6 +21,7 @@ Short-term (before release):
 - Add style editor.
     - Allow users to edit reader styles, both on a global basis and on a per-book basis, and including the option to override book styles or not for each style the users define.
     - Also allow library style to be edited separately from book style.
+- Support graceful fallbacks in the face of ill-formed EPUBs.
 
 Medium-term (next steps after release):
 
@@ -30,6 +31,7 @@ Medium-term (next steps after release):
     - Add a Fimfiction-style top bar allowing settings and navigation access from the middle of the page without requiring scrolling.
     - Add history-tracking and support for back/forward buttons, either soft or (ideally) hard.
     - Add support for a reload button, likely soft since a hard one would produce problems for people who *actually do* want to reload the extension tab.
+    - Support non-TOC navs (page list et al.)
 - Library V2
     - Track and display recently-read books and positions therein. Return to last-read position upon reopening.
 - Add support for non-Firefox browsers.

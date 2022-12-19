@@ -1,7 +1,6 @@
 "use strict";
 
-window.addEventListener("DOMContentLoaded", _ => {
-    // Enable navigation functionality
+function enableNavigation() {
     let navClassName = document.querySelector("nav").classList[0];
     document.querySelectorAll("." + navClassName + " input[value=Previous]").forEach(button => {
         button.addEventListener("click", _ => parent.postMessage({messageType: "BasaltPrevSection"}, parent.document.documentURI));
@@ -10,11 +9,15 @@ window.addEventListener("DOMContentLoaded", _ => {
         button.addEventListener("click", _ => parent.postMessage({messageType: "BasaltNextSection"}, parent.document.documentURI));
     });
     document.querySelectorAll("." + navClassName + " select").forEach(select => {
-        select.addEventListener("change", event => parent.postMessage({messageType: "BasaltDisplaySection", index: event.target.value}, parent.document.documentURI));
+        select.addEventListener("change", event => {
+            let tocTarget = JSON.parse(event.target.value);
+            parent.postMessage({messageType: "BasaltDisplaySection", index: tocTarget.index, fragment: tocTarget.fragment}, parent.document.documentURI);
+        });
     });
     document.querySelector('header input[value="Close book"]').addEventListener("click", _ => parent.postMessage({messageType: "BasaltCloseBook"}, parent.document.documentURI));
+}
 
-    // Rewrite links
+function rewriteLinks() {
     for (let link of document.getElementsByTagName("a")) {
         let linkHref = link.getAttribute("href");
         if (linkHref) {
@@ -41,4 +44,7 @@ window.addEventListener("DOMContentLoaded", _ => {
             }
         }
     }
-});
+}
+
+enableNavigation();
+rewriteLinks();

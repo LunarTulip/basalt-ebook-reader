@@ -48,12 +48,12 @@ function parseHref(href, base) {
 
 // tocArray: array of book TOC objects, either the top-level TOC or a descendant
 // ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
-// Returns array of items, where each item is an object mapping "label" to a string to be displayed and "link" to the TOC href associated with that label
+// Returns array of items, where each item is an object mapping "label" to a string to be displayed and "href" to the TOC href associated with that label
 function getTocItems(tocArray, ancestorCount) {
     let items = [];
     tocArray.forEach(tocEntry => {
         let itemLabel = (String.fromCharCode(160).repeat(ancestorCount * 4)) + tocEntry.label.trim(); // The trim is to compensate for an epub.js bug, at the cost of fidelity to sources whose TOCs *actually* have whitespace
-        items.push({label: itemLabel, link: tocEntry.href});
+        items.push({label: itemLabel, href: tocEntry.href});
         items = items.concat(getTocItems(tocEntry.subitems, ancestorCount + 1));
     });
     return items;
@@ -62,6 +62,7 @@ function getTocItems(tocArray, ancestorCount) {
 // toc: book table of contents array
 async function setTocDropdown(toc) {
     let tocDropdown = navigation.getElementsByTagName("select")[0];
+    let opfDirectory = browser.runtime.getURL(parent.book.path.directory);
 
     // Clear any previously-set TOC
     while (tocDropdown.firstChild) {
@@ -77,40 +78,41 @@ async function setTocDropdown(toc) {
     let firstSpineHref = book.spine.items[0].href;
     let lastSpineHref = book.spine.items.at(-1).href;
 
-    if (tocItems[0].link != firstSpineHref) {
-        tocItems.unshift({label: "[Start]", link: firstSpineHref}); // Improve label?
+    if (tocItems[0].href != firstSpineHref) {
+        tocItems.unshift({label: "[Start]", href: firstSpineHref}); // Improve label?
     }
-    if (tocItems.at(-1).link != lastSpineHref) {
-        tocItems.push({label: "[End]", link: lastSpineHref}); // Improve label?
+    if (tocItems.at(-1).href != lastSpineHref) {
+        tocItems.push({label: "[End]", href: lastSpineHref}); // Improve label?
     }
 
     // Write TOC to TOC dropdowns
     tocItems.forEach(item => {
-        let entryElement = document.createElement("option");
-        entryElement.setAttribute("value", item.link);
-        entryElement.textContent = item.label;
-        tocDropdown.append(entryElement.cloneNode(true));
+        let parsedHref = parseHref(item.href, opfDirectory);
+        let spineItem = book.spine.items.find(section => section.canonical === parsedHref.uri);
+        if (spineItem) {
+            item.tocInfo = {index: spineItem.index, fragment: parsedHref.fragment};
+    
+            let entryElement = document.createElement("option");
+            entryElement.setAttribute("value", JSON.stringify(item.tocInfo));
+            entryElement.textContent = item.label;
+            tocDropdown.append(entryElement.cloneNode(true));
+        } else {
+            alert("Error: can't open book due to ill-formed table of contents. (TOC item with label " + item.label + " and href " + item.href + " points outside of book spine.");
+            throw "IllFormedEpub";
+        }
     });
 
     // Map TOC for use in future dropdown-updating
     book.spine.items.forEach(spineItem => {
-        let firstMatchingTocItem = tocItems.find(tocItem => tocItem.link.split("#")[0] === spineItem.href);
-        let lastMatchingTocItem = tocItems.findLast(tocItem => tocItem.link.split("#")[0] === spineItem.href);
+        let firstMatchingTocItem = tocItems.find(tocItem => tocItem.tocInfo.index === spineItem.index);
+        let lastMatchingTocItem = tocItems.findLast(tocItem => tocItem.tocInfo.index === spineItem.index);
         if (firstMatchingTocItem) {
-            sectionToTocMap[spineItem.index] = {header: firstMatchingTocItem.link, footer: lastMatchingTocItem.link};
+            sectionToTocMap[spineItem.index] = {header: JSON.stringify(firstMatchingTocItem.tocInfo), footer: JSON.stringify(lastMatchingTocItem.tocInfo)};
         } else {
             let lastItemHit = sectionToTocMap[spineItem.index - 1].footer;
             sectionToTocMap[spineItem.index] = {header: lastItemHit, footer: lastItemHit};
         }
     });
-}
-
-// doc: HTML doc to inject script into
-function injectUiScript(doc) {
-    let scriptUri = browser.runtime.getURL("reader/basalt-ui.js");
-    let scriptElement = doc.createElement("script");
-    scriptElement.setAttribute("src", scriptUri);
-    doc.head.append(scriptElement);
 }
 
 // doc: HTML doc to check uniqueness against
@@ -257,31 +259,49 @@ async function injectNavigationAndStyles(doc) {
     doc.body.append(footer);
 
     // Set header and footer dropdown positions
-    doc.querySelector("#" + headerIdName + ' select [value="' + sectionToTocMap[currentSection.index].header + '"]').setAttribute("selected", "selected");
-    Array.from(doc.querySelectorAll("#" + footerIdName + ' select [value="' + sectionToTocMap[currentSection.index].footer + '"]')).at(-1).setAttribute("selected", "selected");
+    doc.querySelector("#" + headerIdName + " select [value='" + sectionToTocMap[currentSection.index].header + "']").setAttribute("selected", "selected");
+    Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
 
     let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
     style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
     doc.head.append(style);
 }
 
+// doc: HTML doc to inject script into
+function injectUiScript(doc) {
+    let scriptUri = browser.runtime.getURL("reader/basalt-ui.js");
+    let scriptElement = doc.createElement("script");
+    scriptElement.setAttribute("src", scriptUri);
+    doc.body.append(scriptElement);
+}
+
 // html: string representationn of HTML doc to prepare
 async function prepareHtmlForDisplay(html) {
     let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
 
-    injectUiScript(parsedHtml);
-    // modifyLinks(parsedHtml);
     await injectNavigationAndStyles(parsedHtml);
+    injectUiScript(parsedHtml);
 
     return new XMLSerializer().serializeToString(parsedHtml);
+}
+
+// window: window to set hash value of
+// fragment: fragment identifier to set window's hash value to
+function goToFragment(window, fragment) {
+    window.location.hash = fragment;
 }
 
 // index: numerical index into spine
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
+    let newSection = false;
     if (!currentSection || (index !== currentSection.index)) {
         let section = book.spine.get(index);
         if (section) {
+            newSection = true;
+            if (fragment) {
+                bookIframe.addEventListener("load", _ => bookIframe.contentWindow.location.hash = fragment, {once: true});
+            }
             window.scrollTo(0, 0);
             currentSection = section;
             currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
@@ -291,7 +311,7 @@ async function displaySection(index, fragment) {
             });
         }
     }
-    if (fragment) {
+    if (fragment && !newSection) {
         bookIframe.contentWindow.location.hash = fragment;
     }
 }
@@ -319,6 +339,7 @@ async function openBook(file) {
     }
 
     alert("Error: can't open book due to ill-formed spine. (All spine sections are nonlinear.)");
+    throw "IllFormedEpub";
 }
 
 function closeBook() {
