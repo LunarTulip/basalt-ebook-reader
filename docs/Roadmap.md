@@ -49,9 +49,10 @@ Nice-to-haves (may or may not be possible or practical, but belong in the prior 
 
 - Support vertical text on a fully-reliable non-heuristic level, as well as arbitrary other text layouts.
 - Allow opening EPUBs straight into the extension-viewer, analogous to how Firefox currently handles PDFs.
-    - Open In Browser is an extension that exists and might serve as a source of guidance here, but it seems to work very awkwardly, not in a nice native way like the PDF handler.
+    - [Open In Browser](https://github.com/Rob--W/open-in-browser) is an extension that exists and might serve as a source of guidance here, but it seems to work very awkwardly, not in a nice native way like the PDF handler.
 - In Library V2, offer quick-open buttons for previously-read books, without requiring filesystem navigation every time.
     - If this is possible, add option to launch directly into one's last opened book rather than needing the library as an indirection-layer.
 - Add multiple layouts in the styles of different webfiction sites and/or readers, in addition to the default one.
 - Rename the reader to something more interesting / character-indicating.
 - Support more ebook formats (e.g. Kindle formats, CBZ/CBR, etc.)
+- Represent book internals as a virtual FS, with outgoing fetch requests intercepted by a service worker or equivalent, so as to avoid the need for link-rewriting and enable more natural history-display. (See [Bugzilla 1344561](https://bugzilla.mozilla.org/show_bug.cgi?id=1344561).)

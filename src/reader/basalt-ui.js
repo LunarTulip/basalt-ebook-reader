@@ -23,7 +23,7 @@ function rewriteLinks() {
         if (linkHref) {
             let parsedHref = parent.parseHref(linkHref, browser.runtime.getURL(parent.currentDirectory));
             if (parsedHref.internal) {
-                let spineItem = parent.book.spine.items.find(section => section.canonical === encodeURI(parsedHref.uri));
+                let spineItem = parent.book.spine.items.find(section => (section.canonical === parsedHref.uri) || (section.canonical === decodeURI(parsedHref.uri)));
                 if (spineItem) {
                     link.addEventListener("click", event => {
                         parent.postMessage({messageType: "BasaltDisplaySection", index: spineItem.index, fragment: parsedHref.fragment}, parent.document.documentURI);

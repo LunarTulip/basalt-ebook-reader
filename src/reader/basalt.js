@@ -8,6 +8,7 @@
 
 var book; // The currently-opened epub.js ePub object
 var currentSection; // The currently-displayed epub.js Section object
+var currentBookId; // The unique ID of the book from which the current section is sourced
 var currentDirectory; // Path to the directory housing currentSection
 
 // basalt.js internal logic
@@ -62,7 +63,7 @@ function getTocItems(tocArray, ancestorCount) {
 // toc: book table of contents array
 async function setTocDropdown(toc) {
     let tocDropdown = navigation.getElementsByTagName("select")[0];
-    let opfDirectory = browser.runtime.getURL(parent.book.path.directory);
+    let opfPath = browser.runtime.getURL(parent.book.path.path);
 
     // Clear any previously-set TOC
     while (tocDropdown.firstChild) {
@@ -87,17 +88,17 @@ async function setTocDropdown(toc) {
 
     // Write TOC to TOC dropdowns
     tocItems.forEach(item => {
-        let parsedHref = parseHref(item.href, opfDirectory);
-        let spineItem = book.spine.items.find(section => section.canonical === parsedHref.uri);
+        let parsedHref = parseHref(item.href, opfPath);
+        let spineItem = book.spine.items.find(section => (section.canonical === parsedHref.uri) || (section.canonical === decodeURI(parsedHref.uri)));
         if (spineItem) {
             item.tocInfo = {index: spineItem.index, fragment: parsedHref.fragment};
-    
+
             let entryElement = document.createElement("option");
             entryElement.setAttribute("value", JSON.stringify(item.tocInfo));
             entryElement.textContent = item.label;
             tocDropdown.append(entryElement.cloneNode(true));
         } else {
-            alert("Error: can't open book due to ill-formed table of contents. (TOC item with label " + item.label + " and href " + item.href + " points outside of book spine.");
+            alert('Error: can\'t open book due to ill-formed table of contents. (TOC item with label "' + item.label + '" and href "' + item.href + '" points outside of book spine.');
             throw "IllFormedEpub";
         }
     });
@@ -289,7 +290,7 @@ async function prepareHtmlForDisplay(html) {
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
     let newSection = false;
-    if (!currentSection || (index !== currentSection.index)) {
+    if (!currentSection || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
         let section = book.spine.get(index);
         if (section) {
             newSection = true;
@@ -325,7 +326,7 @@ async function openBook(file) {
     while (firstLinearSectionIndex < book.spine.length) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
-            bookIframe.removeAttribute("src");
+            currentBookId = book.package.uniqueIdentifier;
             return;
         } else {
             firstLinearSectionIndex += 1;
@@ -338,11 +339,11 @@ async function openBook(file) {
 
 function closeBook() {
     document.title = "Basalt eBook Reader: Library";
-    bookIframe.setAttribute("src", "library.html");
+    currentBookId = undefined;
     bookIframe.removeAttribute("srcdoc");
 }
 
-// Save current srcdoc when closing and then have a resume function in the library?
+// Save current srcdoc when closing and then have a resume function in the library? (Book stays in memory until a new book is opened, so it'd be cheap.)
 
 ////////////////////
 //   Navigation   //
