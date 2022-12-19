@@ -22,6 +22,26 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 
 var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation node for insertion into header/footer
 
+/////////////////
+//   Helpers   //
+/////////////////
+
+// href: string representation of URI-encoded href
+// base: string representation of URI-encoded directory name from which href is reffing
+// Returns object with properties "internal" (bool, true if internal href, false if external), "uri" (string, path to linked target from epub root if internal, untouched input href if external), and "fragment" (string | undefined, fragment identifier if present on internal href)
+function parseHref(href, base) {
+    let linkUrl = new URL(href, base);
+    if (linkUrl.href.startsWith(browser.runtime.getURL(""))) { // Internal href
+        if (linkUrl.hash) {
+            return {internal: true, uri: linkUrl.pathname, fragment: linkUrl.hash};
+        } else {
+            return {internal: true, uri: linkUrl.pathname};
+        }
+    } else { // External href
+        return {internal: false, uri: linkUrl.href};
+    }
+}
+
 ///////////////////
 //   Rendering   //
 ///////////////////
@@ -83,29 +103,6 @@ async function setTocDropdown(toc) {
             sectionToTocMap[spineItem.index] = {header: lastItemHit, footer: lastItemHit};
         }
     });
-}
-
-// link: string representation of URI-encoded href
-// Returns object with properties "internal" (bool, true if internal link, false if external) and "uri" (string | null, path to linked target from epub root if internal, untouched input link if external, null if relative-link-to-outside-epub-root)
-function parseLink(link) {
-    if (link.includes(":/")) {
-        return {internal: false, uri: link};
-    } else {
-        let linkTargetPath;
-        if (link.startsWith("/")) {
-            linkTargetPath = link;
-        } else {
-            linkTargetPath = currentDirectory + "/" + link;
-        }
-        linkTargetPath = linkTargetPath.replaceAll("/./", "/");
-        while (linkTargetPath.includes("/..")) {
-            if (linkTargetPath.startsWith("/..")) {
-                return {internal: true, uri: null};
-            }
-            linkTargetPath = linkTargetPath.replace(/\/[^\/]+?\/\.\./, "");
-        }
-        return {internal: true, uri: linkTargetPath};
-    }
 }
 
 // doc: HTML doc to inject script into
@@ -279,17 +276,23 @@ async function prepareHtmlForDisplay(html) {
     return new XMLSerializer().serializeToString(parsedHtml);
 }
 
-// item: numerical index into spine, or string href or idref of a spine item
-async function displaySection(item) {
-    let section = book.spine.get(item);
-    if (section) {
-        window.scrollTo(0, 0);
-        currentSection = section;
-        currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/");
-        section.render(book.load.bind(book)).then(async html => {
-            let htmlToDisplay = await prepareHtmlForDisplay(html);
-            bookIframe.setAttribute("srcdoc", htmlToDisplay);
-        });
+// index: numerical index into spine
+// fragment: string | undefined, fragment to jump to in section if applicable
+async function displaySection(index, fragment) {
+    if (!currentSection || (index !== currentSection.index)) {
+        let section = book.spine.get(index);
+        if (section) {
+            window.scrollTo(0, 0);
+            currentSection = section;
+            currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
+            section.render(book.load.bind(book)).then(async html => {
+                let htmlToDisplay = await prepareHtmlForDisplay(html);
+                bookIframe.setAttribute("srcdoc", htmlToDisplay);
+            });
+        }
+    }
+    if (fragment) {
+        bookIframe.contentWindow.location.hash = fragment;
     }
 }
 
@@ -360,22 +363,16 @@ async function prevSection() {
 
 window.addEventListener("message", basaltMessage => {
     if (basaltMessage.origin === browser.runtime.getURL("").slice(undefined, -1)) {
-        console.info("Message received from correct origin.")
         if (basaltMessage.data.messageType === "BasaltOpenBook") {
-            console.info("Started opening book.")
             openBook(basaltMessage.data.book);
         } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
-            console.info("Started closing book.")
             closeBook();
         } else if (basaltMessage.data.messageType === "BasaltNextSection") {
-            console.info("Started going to next section.")
             nextSection();
         } else if (basaltMessage.data.messageType === "BasaltPrevSection") {
-            console.info("Started going to previous section.")
             prevSection();
         } else if (basaltMessage.data.messageType === "BasaltDisplaySection") {
-            console.info("Started displaying section " + basaltMessage.data.item + ".")
-            displaySection(basaltMessage.data.item);
+            displaySection(basaltMessage.data.index, basaltMessage.data.fragment);
         }
     }
 });
