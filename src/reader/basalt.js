@@ -285,12 +285,6 @@ async function prepareHtmlForDisplay(html) {
     return new XMLSerializer().serializeToString(parsedHtml);
 }
 
-// window: window to set hash value of
-// fragment: fragment identifier to set window's hash value to
-function goToFragment(window, fragment) {
-    window.location.hash = fragment;
-}
-
 // index: numerical index into spine
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
@@ -383,6 +377,7 @@ async function prevSection() {
 //////////////
 
 window.addEventListener("message", basaltMessage => {
+    // This leads to potential collisions if someone else is passing messages of coincidentally-identical structure; can it be done better?
     if (basaltMessage.origin === browser.runtime.getURL("").slice(undefined, -1)) {
         if (basaltMessage.data.messageType === "BasaltOpenBook") {
             openBook(basaltMessage.data.book);
