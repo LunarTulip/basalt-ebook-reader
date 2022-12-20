@@ -6,10 +6,7 @@ Short-term (before release):
 - Library V1
     - Add less-ugly file picker to the library.
 - Navigation V1
-    - Add less-ugly return-to-library button to the header.
     - Add return-to-top button to the footer.
-- Improve internal link handling.
-    - Support jumping to fragments where specified in links, including TOC links.
 - Improve CSS handling.
     - Rewrite browser-prefixed styles which Firefox supports in unprefixed mode to display in unprefixed mode. (e.g. `webkit-writing-mode` to `writing-mode`.)
     - Replace regex-based CSS-rewriting with more full-featured parsing, to improve reliability.
@@ -17,7 +14,6 @@ Short-term (before release):
     - Identify when a section is vertical-text-centric via analysis of its elements' `writing-mode` styles.
     - Enable proper scrolling of RTL vertical text.
     - Turn reader header/footer 90 degrees, into appropriate positions relative to the text direction.
-    - Rewrite prefixed `writing-mode` styles such as `webkit-writing-mode` to the version functional in Firefox.
 - Add style editor.
     - Allow users to edit reader styles, both on a global basis and on a per-book basis, and including the option to override book styles or not for each style the users define.
     - Also allow library style to be edited separately from book style.
@@ -31,7 +27,7 @@ Medium-term (next steps after release):
     - Add a Fimfiction-style top bar allowing settings and navigation access from the middle of the page without requiring scrolling.
     - Add history-tracking and support for back/forward buttons, either soft or (ideally) hard.
     - Add support for a reload button, likely soft since a hard one would produce problems for people who *actually do* want to reload the extension tab.
-    - Support non-TOC navs (page list et al.)
+    - Support non-TOC navs (page list et al.).
 - Library V2
     - Track and display recently-read books and positions therein. Return to last-read position upon reopening.
 - Add support for non-Firefox browsers.
