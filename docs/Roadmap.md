@@ -5,8 +5,6 @@ Short-term (before release):
 - Fill in manifest.
 - Library V1
     - Add less-ugly file picker to the library.
-- Navigation V1
-    - Add return-to-top button to the footer.
 - Support vertical text on a heuristic level.
     - Identify when a section is vertical-text-centric via analysis of its elements' `writing-mode` styles.
     - Enable proper scrolling of RTL vertical text.

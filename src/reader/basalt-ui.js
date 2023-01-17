@@ -15,6 +15,7 @@ function enableNavigation() {
         });
     });
     document.querySelector('header input[value="Close book"]').addEventListener("click", _ => parent.postMessage({messageType: "BasaltCloseBook"}, parent.document.documentURI));
+    document.querySelector('footer input[value="Return to top"]').addEventListener("click", _ => window.scrollTo(0, 0));
 }
 
 function rewriteLinks() {

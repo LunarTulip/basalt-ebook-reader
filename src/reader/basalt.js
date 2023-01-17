@@ -163,9 +163,12 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
         let selectorWithBodyReplaced = selector.replaceAll(/(?<![\w\.#[=:_-])body(?![\w_-])/g, "." + bodyClassName);
         let selectorWithBodyAndHtmlReplaced = selectorWithBodyReplaced.replaceAll(/(?<![\w\.#[=:_-])html(?![\w_-])/g, "." + htmlClassName);
 
-        let declarationsMinusPrefixes = declarations.replaceAll(/(^|(?<=[:\s]))-(webkit|moz|o|ms)-(?=\w)/g, "");
-
-        updatedSheet += [selectorWithBodyAndHtmlReplaced].concat(declarationsMinusPrefixes).join("{");
+        if (declarations) {
+            let declarationsMinusPrefixes = declarations.replaceAll(/(^|(?<=[:\s]))-(webkit|moz|o|ms)-(?=\w)/g, "");
+            updatedSheet += [selectorWithBodyAndHtmlReplaced].concat(declarationsMinusPrefixes).join("{");
+        } else {
+            updatedSheet += selectorWithBodyAndHtmlReplaced;
+        }
     }
     updatedSheet += after_final_style;
 
@@ -221,6 +224,7 @@ async function injectNavigationAndStyles(doc) {
     let headerIdName = getUniqueIdName(doc, "basaltheader");
     let footerIdName = getUniqueIdName(doc, "basaltfooter");
     let closeButtonIdName = getUniqueIdName(doc, "basaltclosebook");
+    let returnToTopButtonIdName = getUniqueIdName(doc, "basaltreturntotop");
     let navigationClassName = getUniqueClassName(doc, "basaltnav");
     let htmlClassName = getUniqueClassName(doc, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(doc, "basaltmainbody");
@@ -289,6 +293,10 @@ async function injectNavigationAndStyles(doc) {
     closeBookButton.id = closeButtonIdName;
     closeBookButton.classList.add(ignoreStylesClassName);
 
+    let returnToTopButton = doc.importNode(document.getElementById("returntotoptemplate").content.firstElementChild);
+    returnToTopButton.id = returnToTopButtonIdName;
+    returnToTopButton.classList.add(ignoreStylesClassName);
+
     let docNav = doc.importNode(navigation, true);
     docNav.classList.add(navigationClassName);
     docNav.classList.add(ignoreStylesClassName);
@@ -308,6 +316,7 @@ async function injectNavigationAndStyles(doc) {
     let footer = doc.createElement("footer");
     footer.id = footerIdName;
     footer.classList.add(ignoreStylesClassName);
+    footer.append(returnToTopButton);
     footer.append(docNav);
 
     doc.body.prepend(header);
@@ -318,7 +327,7 @@ async function injectNavigationAndStyles(doc) {
     Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
 
     let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
-    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
+    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
     doc.head.append(style);
 }
 
