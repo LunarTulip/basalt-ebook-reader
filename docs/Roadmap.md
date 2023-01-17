@@ -9,7 +9,6 @@ Short-term (before release):
     - Add return-to-top button to the footer.
 - Improve CSS handling.
     - Rewrite browser-prefixed styles which Firefox supports in unprefixed mode to display in unprefixed mode. (e.g. `webkit-writing-mode` to `writing-mode`.)
-    - Replace regex-based CSS-rewriting with more full-featured parsing, to improve reliability.
 - Support vertical text on a heuristic level.
     - Identify when a section is vertical-text-centric via analysis of its elements' `writing-mode` styles.
     - Enable proper scrolling of RTL vertical text.
@@ -30,6 +29,7 @@ Medium-term (next steps after release):
     - Support non-TOC navs (page list et al.).
 - Library V2
     - Track and display recently-read books and positions therein. Return to last-read position upon reopening.
+- Cache recently-opened books (up to user-definable number and/or total size), to allow reopening without the file-picker dialogue
 - Add support for non-Firefox browsers.
 - Support SVGs in the spine.
 - Add support for `scrolled-continuous` display, and an option to default to it.
@@ -50,5 +50,5 @@ Nice-to-haves (may or may not be possible or practical, but belong in the prior 
     - If this is possible, add option to launch directly into one's last opened book rather than needing the library as an indirection-layer.
 - Add multiple layouts in the styles of different webfiction sites and/or readers, in addition to the default one.
 - Rename the reader to something more interesting / character-indicating.
-- Support more ebook formats (e.g. Kindle formats, CBZ/CBR, etc.)
+- Support more ebook formats (e.g. Kindle formats, CBZ/CBR, PDF, etc.)
 - Represent book internals as a virtual FS, with outgoing fetch requests intercepted by a service worker or equivalent, so as to avoid the need for link-rewriting and enable more natural history-display. (See [Bugzilla 1344561](https://bugzilla.mozilla.org/show_bug.cgi?id=1344561).)

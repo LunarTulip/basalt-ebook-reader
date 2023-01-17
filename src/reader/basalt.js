@@ -4,6 +4,12 @@
 //   Globals   //
 /////////////////
 
+// LightningCSS-relevant information
+
+let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js");
+let lightningCssImportFinished = lightningCss.then(lcss => lcss.default());
+let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16);
+
 // epub.js objects
 
 var book; // The currently-opened epub.js ePub object
@@ -63,7 +69,7 @@ function getTocItems(tocArray, ancestorCount) {
 // toc: book table of contents array
 async function setTocDropdown(toc) {
     let tocDropdown = navigation.getElementsByTagName("select")[0];
-    let opfPath = browser.runtime.getURL(parent.book.path.path);
+    let opfPath = browser.runtime.getURL(book.path.path);
 
     // Clear any previously-set TOC
     while (tocDropdown.firstChild) {
@@ -139,11 +145,12 @@ function getUniqueIdName(doc, baseName) {
 }
 
 // sheet: string representation of CSS stylesheet
-// bodyReplacement: string to replace body element selectors with
-// htmlReplacement: string to replace html element selectors
-// Returns sheet, except with any body or html element selectors replaced with their respective replacements
-function replaceBodyAndHtmlStyles(sheet, bodyReplacement, htmlReplacement) {
-    // This is crude and possibly missing edge cases; in the long run, use a proper CSS parser rather than regex hackery
+// bodyClassName: class name to replace body element selectors with
+// htmlClassName: class name to replace html element selectors with
+// Returns sheet, except with any body or html element selectors replaced with their respective replacements and (in the future) with any Firefox-supported rules with non-Firefox-supported prefixes replaced with their Firefox-supported forms
+async function updateStyles(sheet, bodyClassName, htmlClassName) {
+    // Legacy regex-based replacement code, currently necessary since LightningCSS's visitor API is broken
+
     let styles = sheet.split("}");
     let after_final_style = styles.pop();
     styles = styles.map(style => style + "}");
@@ -152,13 +159,56 @@ function replaceBodyAndHtmlStyles(sheet, bodyReplacement, htmlReplacement) {
     for (let style of styles) {
         let split_style = style.split("{");
         let selector = split_style.shift();
-        let bodyReplaced = selector.replace(/(?<![\w\.\#\[\=\:-])body(?![\w-])/, bodyReplacement);
-        let bothReplaced = bodyReplaced.replace(/(?<![\w\.\#\[\=\:-])html(?![\w-])/, htmlReplacement);
+        let bodyReplaced = selector.replace(/(?<![\w\.\#\[\=\:-])body(?![\w-])/, "." + bodyClassName);
+        let bothReplaced = bodyReplaced.replace(/(?<![\w\.\#\[\=\:-])html(?![\w-])/, "." + htmlClassName);
         updatedSheet += [bothReplaced].concat(split_style).join("{");
     }
     updatedSheet += after_final_style;
 
-    return updatedSheet;
+    // Non-legacy parser-based replacement code
+
+    await lightningCssImportFinished;
+    let {code, _map} = (await lightningCss).transform({
+        code: new TextEncoder().encode(updatedSheet),
+        errorRecovery: true,
+        targets: {
+            firefox: await browserVersion,
+        },
+        // visitor: { // lightningcss-wasm's visitor API is currently nonfunctional, so this does nothing
+        //     Rule: {
+        //         style(rule) {
+        //             for (let selector of rule.value.selectors) {
+        //                 for (let [i, component] of selector.entries()) {
+        //                     if (component.type === "type") {
+        //                         if (component.name === "body") {
+        //                             selector[i] = {type: "class", name: bodyReplacement};
+        //                         } else if (component.name === "html") {
+        //                             selector[i] = {type: "class", name: htmlReplacement};
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             for (let declaration of rule.value.declarations.declarations) {
+        //                 if (declaration.vendorPrefix) {
+        //                     delete declaration.vendorPrefix;
+        //                 } // Subsequent lines might be redundant? Test once the overall visitor works
+        //                 if (declaration.property.startsWith("-webkit-")) {
+        //                     declaration.property = declaration.property.slice(8);
+        //                 } else if (declaration.property.startsWith("-moz-")) {
+        //                     declaration.property = declaration.property.slice(5);
+        //                 } else if (declaration.property.startsWith("-o-")) {
+        //                     declaration.property = declaration.property.slice(3);
+        //                 } else if (declaration.property.startsWith("-ms-")) {
+        //                     declaration.property = declaration.property.slice(4);
+        //                 }
+        //             }
+        //             return rule;
+        //         }
+        //     }
+        // }
+    });
+
+    return new TextDecoder().decode(code);
 }
 
 // doc: HTML doc into whose body the navigation header and footer should be injected
@@ -218,14 +268,14 @@ async function injectNavigationAndStyles(doc) {
             nodeSheet = node.innerHTML;
         } else if (node.tagName == "link") {
             nodeSheet = await fetch(node.href).then(async content => await content.text());
+        } else {
+            alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)")
+            throw "BasaltLogicError"
         }
-        let sheetWithReplacements = replaceBodyAndHtmlStyles(nodeSheet, "." + bodyClassName, "." + htmlClassName);
-        if (sheetWithReplacements !== nodeSheet) {
-            let sheetStyleNode = doc.createElement("style");
-            sheetStyleNode.innerHTML = sheetWithReplacements;
-            node.parentNode.replaceChild(sheetStyleNode, node);
-        }
-        // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard.
+        let updatedStyleNode = doc.createElement("style");
+        updatedStyleNode.innerHTML = await updateStyles(nodeSheet, bodyClassName, htmlClassName);
+        node.parentNode.replaceChild(updatedStyleNode, node);
+        // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
     }
 
     doc.body.append(mainHtml);

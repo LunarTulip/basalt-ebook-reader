@@ -1,0 +1,1 @@
+https://github.com/parcel-bundler/lightningcss/releases/tag/v1.17.1
