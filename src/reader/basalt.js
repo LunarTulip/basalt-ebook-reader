@@ -1,12 +1,13 @@
 "use strict";
 
+let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js");
+
 /////////////////
 //   Globals   //
 /////////////////
 
 // LightningCSS-relevant information
 
-let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js");
 let lightningCssImportFinished = lightningCss.then(lcss => lcss.default());
 let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16);
 
@@ -147,7 +148,7 @@ function getUniqueIdName(doc, baseName) {
 // sheet: string representation of CSS stylesheet
 // bodyClassName: class name to replace body element selectors with
 // htmlClassName: class name to replace html element selectors with
-// Returns sheet, validated for the current browser version, with any body or html element selectors replaced with their respective replacements and with any prefixed rules changed into Firefox-supported form if possible
+// Returns sheet, transpiled for maximum compatibility with whatever major Firefox version is being run, with any body or html element selectors replaced with their respective replacement classes
 async function updateStyles(sheet, bodyClassName, htmlClassName) {
     // Legacy regex-based replacement code, broken in edge cases but currently necessary since lightningcss-wasm's visitor API is broken
 
@@ -159,10 +160,10 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
     for (let style of styles) {
         let [selector, declarations] = style.split("{");
 
-        let selectorWithBodyReplaced = selector.replace(/(?<![\w\.#[=:_-])body(?![\w_-])/, "." + bodyClassName);
-        let selectorWithBodyAndHtmlReplaced = selectorWithBodyReplaced.replace(/(?<![\w\.#[=:_-])html(?![\w_-])/, "." + htmlClassName);
+        let selectorWithBodyReplaced = selector.replaceAll(/(?<![\w\.#[=:_-])body(?![\w_-])/g, "." + bodyClassName);
+        let selectorWithBodyAndHtmlReplaced = selectorWithBodyReplaced.replaceAll(/(?<![\w\.#[=:_-])html(?![\w_-])/g, "." + htmlClassName);
 
-        let declarationsMinusPrefixes = declarations.split(";").map(declaration => declaration.replace(/(?<=[:\s])-(webkit|moz|o|ms)-(?=\w)/, "")).join(";");
+        let declarationsMinusPrefixes = declarations.replaceAll(/(^|(?<=[:\s]))-(webkit|moz|o|ms)-(?=\w)/g, "");
 
         updatedSheet += [selectorWithBodyAndHtmlReplaced].concat(declarationsMinusPrefixes).join("{");
     }

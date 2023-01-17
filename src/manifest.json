@@ -8,7 +8,7 @@
     "manifest_version": 2,
     "name": "Basalt eBook Reader",
     "short_name": "Basalt",
-    "version": "0.4.5",
+    "version": "0.4.6",
     "web_accessible_resources": [
         "reader/*"
     ]
