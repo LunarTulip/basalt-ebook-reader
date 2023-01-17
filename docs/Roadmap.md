@@ -7,8 +7,6 @@ Short-term (before release):
     - Add less-ugly file picker to the library.
 - Navigation V1
     - Add return-to-top button to the footer.
-- Improve CSS handling.
-    - Rewrite browser-prefixed styles which Firefox supports in unprefixed mode to display in unprefixed mode. (e.g. `webkit-writing-mode` to `writing-mode`.)
 - Support vertical text on a heuristic level.
     - Identify when a section is vertical-text-centric via analysis of its elements' `writing-mode` styles.
     - Enable proper scrolling of RTL vertical text.

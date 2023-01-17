@@ -147,9 +147,9 @@ function getUniqueIdName(doc, baseName) {
 // sheet: string representation of CSS stylesheet
 // bodyClassName: class name to replace body element selectors with
 // htmlClassName: class name to replace html element selectors with
-// Returns sheet, except with any body or html element selectors replaced with their respective replacements and (in the future) with any Firefox-supported rules with non-Firefox-supported prefixes replaced with their Firefox-supported forms
+// Returns sheet, validated for the current browser version, with any body or html element selectors replaced with their respective replacements and with any prefixed rules changed into Firefox-supported form if possible
 async function updateStyles(sheet, bodyClassName, htmlClassName) {
-    // Legacy regex-based replacement code, currently necessary since LightningCSS's visitor API is broken
+    // Legacy regex-based replacement code, broken in edge cases but currently necessary since lightningcss-wasm's visitor API is broken
 
     let styles = sheet.split("}");
     let after_final_style = styles.pop();
@@ -157,15 +157,18 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
 
     let updatedSheet = "";
     for (let style of styles) {
-        let split_style = style.split("{");
-        let selector = split_style.shift();
-        let bodyReplaced = selector.replace(/(?<![\w\.\#\[\=\:-])body(?![\w-])/, "." + bodyClassName);
-        let bothReplaced = bodyReplaced.replace(/(?<![\w\.\#\[\=\:-])html(?![\w-])/, "." + htmlClassName);
-        updatedSheet += [bothReplaced].concat(split_style).join("{");
+        let [selector, declarations] = style.split("{");
+
+        let selectorWithBodyReplaced = selector.replace(/(?<![\w\.#[=:_-])body(?![\w_-])/, "." + bodyClassName);
+        let selectorWithBodyAndHtmlReplaced = selectorWithBodyReplaced.replace(/(?<![\w\.#[=:_-])html(?![\w_-])/, "." + htmlClassName);
+
+        let declarationsMinusPrefixes = declarations.split(";").map(declaration => declaration.replace(/(?<=[:\s])-(webkit|moz|o|ms)-(?=\w)/, "")).join(";");
+
+        updatedSheet += [selectorWithBodyAndHtmlReplaced].concat(declarationsMinusPrefixes).join("{");
     }
     updatedSheet += after_final_style;
 
-    // Non-legacy parser-based replacement code
+    // Non-legacy LightningCSS-based replacement code, currently partly broken
 
     await lightningCssImportFinished;
     let {code, _map} = (await lightningCss).transform({
