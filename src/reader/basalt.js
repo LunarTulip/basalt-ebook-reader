@@ -105,8 +105,8 @@ async function setTocDropdown(toc) {
             entryElement.textContent = item.label;
             tocDropdown.append(entryElement.cloneNode(true));
         } else {
-            alert('Error: can\'t open book due to ill-formed table of contents. (TOC item with label "' + item.label + '" and href "' + item.href + '" points outside of book spine.');
-            throw "IllFormedEpub";
+            item.tocInfo = {index: null, fragment: null};
+            console.warn('TOC item with label "' + item.label + '" and href "' + item.href + '" points outside of the book spine and was thus not included in the displayed table of contents.');
         }
     });
 
@@ -385,19 +385,19 @@ async function openBook(file) {
     document.title = "Basalt eBook Reader: " + book.packaging.metadata.title;
 
     await book.opened;
+    currentBookId = book.package.uniqueIdentifier;
+
     let firstLinearSectionIndex = 0;
     while (firstLinearSectionIndex < book.spine.length) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
-            currentBookId = book.package.uniqueIdentifier;
             return;
         } else {
             firstLinearSectionIndex += 1;
         }
     }
-
-    alert("Error: can't open book due to ill-formed spine. (All spine sections are nonlinear.)");
-    throw "IllFormedEpub";
+    console.warn("Book spine is ill-formed. (All spine sections are nonlinear.) Opening into first section as fallback.");
+    await displaySection(0);
 }
 
 function closeBook() {
