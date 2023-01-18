@@ -30,26 +30,6 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 
 var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation node for insertion into header/footer
 
-/////////////////
-//   Helpers   //
-/////////////////
-
-// href: string representation of URI-encoded href
-// base: string representation of URI-encoded directory name from which href is reffing
-// Returns object with properties "internal" (bool, true if internal href, false if external), "uri" (string, path to linked target from epub root if internal, untouched input href if external), and "fragment" (string | undefined, fragment identifier if present on internal href)
-function parseHref(href, base) {
-    let linkUrl = new URL(href, base);
-    if (linkUrl.href.startsWith(browser.runtime.getURL(""))) { // Internal href
-        if (linkUrl.hash) {
-            return {internal: true, uri: linkUrl.pathname, fragment: linkUrl.hash};
-        } else {
-            return {internal: true, uri: linkUrl.pathname};
-        }
-    } else { // External href
-        return {internal: false, uri: linkUrl.href};
-    }
-}
-
 ///////////////////
 //   Rendering   //
 ///////////////////
@@ -65,6 +45,22 @@ function getTocItems(tocArray, ancestorCount) {
         items = items.concat(getTocItems(tocEntry.subitems, ancestorCount + 1));
     });
     return items;
+}
+
+// href: string representation of URI-encoded href
+// base: string representation of URI-encoded directory name from which href is reffing
+// Returns object with properties "internal" (bool, true if internal href, false if external), "uri" (string, path to linked target from epub root if internal, untouched input href if external), and "fragment" (string | undefined, fragment identifier if present on internal href)
+function parseHref(href, base) {
+    let linkUrl = new URL(href, base);
+    if (linkUrl.href.startsWith(browser.runtime.getURL(""))) { // Internal href
+        if (linkUrl.hash) {
+            return { internal: true, uri: linkUrl.pathname, fragment: linkUrl.hash };
+        } else {
+            return { internal: true, uri: linkUrl.pathname };
+        }
+    } else { // External href
+        return { internal: false, uri: linkUrl.href };
+    }
 }
 
 // toc: book table of contents array
@@ -123,6 +119,27 @@ async function setTocDropdown(toc) {
     });
 }
 
+// doc: HTML doc to retrieve stylesheets from
+// Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from and "sheet" to the text of said stylesheet
+async function getStylesheets(doc) {
+    let sheets = [];
+
+    let stylesheetBearingNodes = doc.querySelectorAll("style, link[rel=stylesheet]");
+
+    for (let node of stylesheetBearingNodes) {
+        if (node.tagName == "style") {
+            sheets.push({node: node, sheet: node.innerHTML});
+        } else if (node.tagName == "link") {
+            sheets.push({node: node, sheet: await fetch(node.href).then(async content => await content.text())});
+        } else {
+            alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)");
+            throw "BasaltLogicError";
+        }
+    }
+
+    return sheets;
+}
+
 // doc: HTML doc to check uniqueness against
 // baseName: name to use if possible, or use in modified form otherwise
 // Returns basename with as many underscores prepended as necessary to make sure nothing in doc has that class name
@@ -143,6 +160,61 @@ function getUniqueIdName(doc, baseName) {
         idName = "_" + idName;
     }
     return idName;
+}
+
+// element: HTML element to get a list of applicable rules for
+// sheets: array of CSSStyleSheet elements
+function getApplicableRules(element, sheets) {
+    let rules = [];
+
+    for (let sheet of sheets) {
+        for (let rule of sheet.cssRules) {
+            if (element.matches(rule.selectorText)) {
+                rules.push(rule.cssText);
+            }
+        }
+    }
+
+    return rules;
+}
+
+// doc: HTML doc to check for whether it's made up of vertical text
+// docSheets: array of stylesheets in doc
+// htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
+// returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
+function getMainWritingMode(doc, docSheets, htmlClassName) {
+    let hydratedSheets = docSheets.map(sheetInfo => {
+        let hydratedSheet = new CSSStyleSheet();
+        hydratedSheet.replaceSync(sheetInfo.sheet);
+        return hydratedSheet;
+    });
+
+    let currentlyCheckedElement = doc.getElementsByClassName(htmlClassName)[0];
+    let writingMode = "horizontal-tb";
+
+    while (true) {
+        let currentElementRules = getApplicableRules(currentlyCheckedElement, hydratedSheets);
+        for (let rule of currentElementRules) {
+            if (rule.includes("writing-mode:")) {
+                let mode = rule.split("writing-mode:").at(-1);
+                if (mode.includes("horizontal-tb") || mode.includes("initial")) {
+                    writingMode = ("horizontal-tb");
+                } else if (mode.includes("vertical-rl")) {
+                    writingMode = ("vertical-rl");
+                } else if (mode.includes("vertical-lr")) {
+                    writingMode = ("vertical-lr");
+                }
+            }
+        }
+        
+        if (currentlyCheckedElement.children.length === 1) {
+            currentlyCheckedElement = currentlyCheckedElement.children[0];
+        } else {
+            break;
+        }
+    }
+
+    return writingMode;
 }
 
 // doc: HTML doc whose html and body elements should be refactored into divs
@@ -189,11 +261,57 @@ function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
     doc.body.append(mainHtml);
 }
 
+// doc: HTML doc into whose body the navigation header and footer should be injected
+// ignoreStylesClassName: class name, unused elsewhere in doc, to indicate that the header and footer should be unaffected by all doc styles
+// headerIdName: ID name for header
+// footerIdName: ID name for footer
+// closeButtonIdName: ID name for "Close book" button in header
+// returnToTopButtonIdName: ID name for "Return to top" button in footer
+// navigationClassName: class name for the header and footer's nav elements
+function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
+    let closeBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild);
+    closeBookButton.id = closeButtonIdName;
+    closeBookButton.classList.add(ignoreStylesClassName);
+
+    let returnToTopButton = doc.importNode(document.getElementById("returntotoptemplate").content.firstElementChild);
+    returnToTopButton.id = returnToTopButtonIdName;
+    returnToTopButton.classList.add(ignoreStylesClassName);
+
+    let docNav = doc.importNode(navigation, true);
+    docNav.classList.add(navigationClassName);
+    docNav.classList.add(ignoreStylesClassName);
+    for (let child of docNav.children) {
+        child.classList.add(ignoreStylesClassName);
+    }
+    for (let child of docNav.getElementsByTagName("select")[0].children) {
+        child.classList.add(ignoreStylesClassName);
+    }
+
+    let header = doc.createElement("header");
+    header.id = headerIdName;
+    header.classList.add(ignoreStylesClassName);
+    header.append(closeBookButton);
+    header.append(docNav.cloneNode(true));
+
+    let footer = doc.createElement("footer");
+    footer.id = footerIdName;
+    footer.classList.add(ignoreStylesClassName);
+    footer.append(returnToTopButton);
+    footer.append(docNav);
+
+    doc.body.prepend(header);
+    doc.body.append(footer);
+
+    // Set header and footer dropdown positions
+    doc.querySelector("#" + headerIdName + " select [value='" + sectionToTocMap[currentSection.index].header + "']").setAttribute("selected", "selected");
+    Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
+}
+
 // sheet: string representation of CSS stylesheet
 // htmlClassName: class name to replace html element selectors with
 // bodyClassName: class name to replace body element selectors with
 // Returns sheet, transpiled for maximum compatibility with whatever major Firefox version is being run, with any body or html element selectors replaced with their respective replacement classes
-async function updateStylesheet(sheet, htmlClassName, bodyClassName) {
+async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
     // Legacy regex-based replacement code, broken in edge cases but currently necessary since lightningcss-wasm's visitor API is broken
 
     let styles = sheet.split("}");
@@ -254,92 +372,65 @@ async function updateStylesheet(sheet, htmlClassName, bodyClassName) {
 }
 
 // doc: HTML doc whose head's style elements and links should be modified
+// docSheets: array of stylesheets in doc
 // htmlClassName: class name to reaim head-element-targeted styles towards
 // bodyClassName: class name to reaim body-element-targeted styles towards
-async function reaimStylesheets(doc, htmlClassName, bodyClassName) {
-    let stylesheetBearingNodes = doc.querySelectorAll("style, link[rel=stylesheet]");
+async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
+    for (let sheetInfo of docSheets) {
+        let reaimedSheet = await reaimStylesheet(sheetInfo.sheet, htmlClassName, bodyClassName);
+        let reaimedNode = doc.createElement("style");
 
-    for (let node of stylesheetBearingNodes) {
-        // This text-retrieval step really doesn't seem like it should be necessary? But document.styleSheets is empty at this point in the program, and the individual styles and links' sheet attributes are null, so the workaround is required.
-        let nodeSheet;
-        if (node.tagName == "style") {
-            nodeSheet = node.innerHTML;
-        } else if (node.tagName == "link") {
-            nodeSheet = await fetch(node.href).then(async content => await content.text());
-        } else {
-            alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)")
-            throw "BasaltLogicError"
-        }
+        reaimedNode.innerHTML = reaimedSheet;
+        sheetInfo.node.parentNode.replaceChild(reaimedNode, sheetInfo.node)
 
-        let updatedStyleNode = doc.createElement("style");
-        updatedStyleNode.innerHTML = await updateStylesheet(nodeSheet, bodyClassName, htmlClassName);
-        node.parentNode.replaceChild(updatedStyleNode, node);
+        sheetInfo.sheet = reaimedSheet;
+        sheetInfo.node = reaimedNode;
     }
     // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
 
-// doc: HTML doc into whose body the navigation header and footer should be injected
-// ignoreStylesClassName: class name, unused elsewhere in doc, to indicate that the header and footer should be unaffected by all doc styles
-// headerIdName: ID name for header
-// footerIdName: ID name for footer
-// closeButtonIdName: ID name for "Close book" button in header
-// returnToTopButtonIdName: ID name for "Return to top" button in footer
-// navigationClassName: class name for the header and footer's nav elements
-function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
-    let closeBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild);
-    closeBookButton.id = closeButtonIdName;
-    closeBookButton.classList.add(ignoreStylesClassName);
-
-    let returnToTopButton = doc.importNode(document.getElementById("returntotoptemplate").content.firstElementChild);
-    returnToTopButton.id = returnToTopButtonIdName;
-    returnToTopButton.classList.add(ignoreStylesClassName);
-
-    let docNav = doc.importNode(navigation, true);
-    docNav.classList.add(navigationClassName);
-    docNav.classList.add(ignoreStylesClassName);
-    for (let child of docNav.children) {
-        child.classList.add(ignoreStylesClassName);
-    }
-    for (let child of docNav.getElementsByTagName("select")[0].children) {
-        child.classList.add(ignoreStylesClassName);
-    }
-
-    let header = doc.createElement("header");
-    header.id = headerIdName;
-    header.classList.add(ignoreStylesClassName);
-    header.append(closeBookButton);
-    header.append(docNav.cloneNode(true));
-
-    let footer = doc.createElement("footer");
-    footer.id = footerIdName;
-    footer.classList.add(ignoreStylesClassName);
-    footer.append(returnToTopButton);
-    footer.append(docNav);
-
-    doc.body.prepend(header);
-    doc.body.append(footer);
-
-    // Set header and footer dropdown positions
-    doc.querySelector("#" + headerIdName + " select [value='" + sectionToTocMap[currentSection.index].header + "']").setAttribute("selected", "selected");
-    Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
+// sheet: CSSStyleSheet element
+// Returns string representation of sheet
+function serializeStylesheet(sheet) {
+    return Array.from(sheet.cssRules).reverse().map(rule => rule.cssText).join("\n");
 }
 
 // doc: HTML doc into which Basalt's stylesheets will be injected
+// writingMode: writing mode in which doc is set to be displayed
 // ignoreStylesClassName: class name indicating that its elements should be unaffected by all doc styles
 // headerIdName: ID name for header
 // footerIdName: ID name for footer
 // closeButtonIdName: ID name for "Close book" button in header
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
-function injectStylesheets(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
-    let lowPriorityStyle = doc.createElement("style");
-    let highPriorityStyle = doc.createElement("style");
+// bodyClassName: class name for the body of the opened book
+function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, bodyClassName) {
+    // Low-priority style (will be overwritten by the book's stylesheets)
+    let lowPriorityStyle = new CSSStyleSheet();
 
-    lowPriorityStyle.innerHTML = "a {color: orangered;}";
-    doc.head.prepend(lowPriorityStyle);
+    lowPriorityStyle.insertRule("." + bodyClassName + " {all: revert; background: darkslateblue; color: gold;}");
+    lowPriorityStyle.insertRule("a {color: orangered;}");
 
-    highPriorityStyle.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} ." + ignoreStylesClassName + " {all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
-    doc.head.append(highPriorityStyle);
+    let lowPriorityStyleElement = doc.createElement("style");
+    lowPriorityStyleElement.innerHTML = serializeStylesheet(lowPriorityStyle);
+    doc.head.prepend(lowPriorityStyleElement);
+
+    // High-priority style (will overwrite the book's stylesheets)
+    // Current undefined, pending work on the style editor
+
+    // Basalt style (will apply to the Basalt UI and override even highPriorityStyle)
+    let basaltStyle = new CSSStyleSheet();
+
+    basaltStyle.insertRule("." + ignoreStylesClassName + " {all: revert;");
+    basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
+    basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px;}");
+    basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;}");
+    basaltStyle.insertRule("#" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;}");
+    basaltStyle.insertRule("." + navigationClassName + " {text-align: center;}");
+
+    let basaltStyleElement = doc.createElement("style");
+    basaltStyleElement.innerHTML = serializeStylesheet(basaltStyle);
+    doc.head.append(basaltStyleElement);
 }
 
 // doc: HTML doc to inject script into
@@ -354,6 +445,8 @@ function injectUiScript(doc) {
 async function prepareHtmlForDisplay(html) {
     let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
 
+    let stylesheets = getStylesheets(parsedHtml);
+
     let ignoreStylesClassName = getUniqueClassName(parsedHtml, "basaltignorestyles");
     let headerIdName = getUniqueIdName(parsedHtml, "basaltheader");
     let footerIdName = getUniqueIdName(parsedHtml, "basaltfooter");
@@ -363,10 +456,12 @@ async function prepareHtmlForDisplay(html) {
     let htmlClassName = getUniqueClassName(parsedHtml, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(parsedHtml, "basaltmainbody");
 
+
     refactorHtmlAndBody(parsedHtml, htmlClassName, bodyClassName);
-    await reaimStylesheets(parsedHtml, htmlClassName, bodyClassName);
     injectNavigation(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
-    injectStylesheets(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
+    await reaimStylesheets(parsedHtml, await stylesheets, htmlClassName, bodyClassName);
+    let writingMode = getMainWritingMode(parsedHtml, await stylesheets, htmlClassName);
+    injectStylesheets(parsedHtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
     injectUiScript(parsedHtml);
 
     return new XMLSerializer().serializeToString(parsedHtml);
