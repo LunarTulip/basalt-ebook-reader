@@ -403,28 +403,39 @@ function serializeStylesheet(sheet) {
 // closeButtonIdName: ID name for "Close book" button in header
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
-// bodyClassName: class name for the body of the opened book
-function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, bodyClassName) {
-    // Low-priority style (will be overwritten by the book's stylesheets)
+// htmlClassName: class name for the html element of the opened book section
+// bodyClassName: class name for the body element of the opened book section
+function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName) {
+    // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
-    lowPriorityStyle.insertRule("." + bodyClassName + " {all: revert; background: darkslateblue; color: gold;}");
+    lowPriorityStyle.insertRule("." + htmlClassName + " {all: revert;}");
+    lowPriorityStyle.insertRule("." + bodyClassName + " {background: darkslateblue; color: gold;}");
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
     let lowPriorityStyleElement = doc.createElement("style");
     lowPriorityStyleElement.innerHTML = serializeStylesheet(lowPriorityStyle);
     doc.head.prepend(lowPriorityStyleElement);
 
-    // High-priority style (will overwrite the book's stylesheets)
-    // Current undefined, pending work on the style editor
+    // High-priority style (will override the book's stylesheets)
+    // Currently undefined, pending work on the style editor
 
     // Basalt style (will apply to the Basalt UI and override even highPriorityStyle)
     let basaltStyle = new CSSStyleSheet();
 
     basaltStyle.insertRule("." + ignoreStylesClassName + " {all: revert;");
-    basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-    basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px;}");
-    basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;}");
+    basaltStyle.insertRule("html {writing-mode: " + writingMode + ";}");
+
+    if (writingMode === "horizontal-tb") {
+        basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
+        basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px;}");
+        basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;}");
+    } else {
+        basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 100vw;}");
+        basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px; min-height: calc(100% - 20px);}");
+        basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; min-height: calc(100% - 20px); margin-top: auto;}");
+    }
+
     basaltStyle.insertRule("#" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;}");
     basaltStyle.insertRule("." + navigationClassName + " {text-align: center;}");
 
@@ -461,7 +472,7 @@ async function prepareHtmlForDisplay(html) {
     injectNavigation(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
     await reaimStylesheets(parsedHtml, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedHtml, await stylesheets, htmlClassName);
-    injectStylesheets(parsedHtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
+    injectStylesheets(parsedHtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
     injectUiScript(parsedHtml);
 
     return new XMLSerializer().serializeToString(parsedHtml);
