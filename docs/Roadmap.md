@@ -24,7 +24,7 @@ Medium-term (next steps after release):
     - Support non-TOC navs (page list et al.).
 - Library V2
     - Track and display recently-read books and positions therein. Return to last-read position upon reopening.
-- Cache recently-opened books (up to user-definable number and/or total size), to allow reopening without the file-picker dialogue
+    - Cache recently-opened books (up to user-definable number and/or total size), to allow reopening without the file-picker dialogue
 - Add support for non-Firefox browsers.
 - Support SVGs in the spine.
 - Add support for `scrolled-continuous` display, and an option to default to it.

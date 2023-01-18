@@ -8,8 +8,8 @@ let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js")
 
 // LightningCSS-relevant information
 
-let lightningCssImportFinished = lightningCss.then(lcss => lcss.default());
-let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16);
+let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // If fulfilled, LightningCSS is usable
+let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Firefox major version, formatted in LightningCSS-comprehensible format
 
 // epub.js objects
 
@@ -145,11 +145,55 @@ function getUniqueIdName(doc, baseName) {
     return idName;
 }
 
+// doc: HTML doc whose html and body elements should be refactored into divs
+// htmlClassName: class name, unique within doc, to place on the html div
+// bodyClassName: class name, unique within doc, to place on the body div
+function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
+    let mainHtml = doc.createElement("main");
+    mainHtml.classList.add(htmlClassName);
+
+    let mainBody = doc.createElement("section");
+    mainBody.classList.add(bodyClassName);
+
+    if (doc.documentElement.id) {
+        mainHtml.id = doc.documentElement.id;
+        doc.documentElement.removeAttribute("id");
+    }
+    for (let listedClass of doc.documentElement.classList) {
+        mainHtml.classList.add(listedClass);
+    }
+    doc.documentElement.removeAttribute("class");
+    if (doc.documentElement.hasAttribute("style")) {
+        mainHtml.setAttribute("style", doc.documentElement.getAttribute("style"));
+        doc.documentElement.removeAttribute("style");
+    }
+
+    if (doc.body.id) {
+        mainBody.id = doc.body.id;
+        doc.body.removeAttribute("id");
+    }
+    for (let listedClass of doc.body.classList) {
+        mainBody.classList.add(listedClass);
+    }
+    doc.body.removeAttribute("class");
+    if (doc.body.hasAttribute("style")) {
+        mainBody.setAttribute("style", doc.body.getAttribute("style"));
+        doc.body.removeAttribute("style");
+    }
+
+    mainHtml.append(mainBody);
+    while (doc.body.childNodes.length > 0) {
+        mainBody.append(doc.body.firstChild);
+    }
+
+    doc.body.append(mainHtml);
+}
+
 // sheet: string representation of CSS stylesheet
-// bodyClassName: class name to replace body element selectors with
 // htmlClassName: class name to replace html element selectors with
+// bodyClassName: class name to replace body element selectors with
 // Returns sheet, transpiled for maximum compatibility with whatever major Firefox version is being run, with any body or html element selectors replaced with their respective replacement classes
-async function updateStyles(sheet, bodyClassName, htmlClassName) {
+async function updateStylesheet(sheet, htmlClassName, bodyClassName) {
     // Legacy regex-based replacement code, broken in edge cases but currently necessary since lightningcss-wasm's visitor API is broken
 
     let styles = sheet.split("}");
@@ -160,14 +204,14 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
     for (let style of styles) {
         let [selector, declarations] = style.split("{");
 
-        let selectorWithBodyReplaced = selector.replaceAll(/(?<![\w\.#[=:_-])body(?![\w_-])/g, "." + bodyClassName);
-        let selectorWithBodyAndHtmlReplaced = selectorWithBodyReplaced.replaceAll(/(?<![\w\.#[=:_-])html(?![\w_-])/g, "." + htmlClassName);
+        let selectorWithHtmlReplaced = selector.replaceAll(/(?<![\w\.#[=:_-])html(?![\w_-])/g, "." + htmlClassName);
+        let selectorWithHtmlAndBodyReplaced = selectorWithHtmlReplaced.replaceAll(/(?<![\w\.#[=:_-])body(?![\w_-])/g, "." + bodyClassName);
 
         if (declarations) {
             let declarationsMinusPrefixes = declarations.replaceAll(/(^|(?<=[:\s]))-(webkit|moz|o|ms)-(?=\w)/g, "");
-            updatedSheet += [selectorWithBodyAndHtmlReplaced].concat(declarationsMinusPrefixes).join("{");
+            updatedSheet += [selectorWithHtmlAndBodyReplaced].concat([declarationsMinusPrefixes]).join("{");
         } else {
-            updatedSheet += selectorWithBodyAndHtmlReplaced;
+            updatedSheet += selectorWithHtmlAndBodyReplaced;
         }
     }
     updatedSheet += after_final_style;
@@ -175,7 +219,7 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
     // Non-legacy LightningCSS-based replacement code, currently partly broken
 
     await lightningCssImportFinished;
-    let {code, _map} = (await lightningCss).transform({
+    let { code, _map } = (await lightningCss).transform({
         code: new TextEncoder().encode(updatedSheet),
         errorRecovery: true,
         targets: {
@@ -198,15 +242,6 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
         //             for (let declaration of rule.value.declarations.declarations) {
         //                 if (declaration.vendorPrefix) {
         //                     delete declaration.vendorPrefix;
-        //                 } // Subsequent lines might be redundant? Test once the overall visitor works
-        //                 if (declaration.property.startsWith("-webkit-")) {
-        //                     declaration.property = declaration.property.slice(8);
-        //                 } else if (declaration.property.startsWith("-moz-")) {
-        //                     declaration.property = declaration.property.slice(5);
-        //                 } else if (declaration.property.startsWith("-o-")) {
-        //                     declaration.property = declaration.property.slice(3);
-        //                 } else if (declaration.property.startsWith("-ms-")) {
-        //                     declaration.property = declaration.property.slice(4);
         //                 }
         //             }
         //             return rule;
@@ -218,57 +253,12 @@ async function updateStyles(sheet, bodyClassName, htmlClassName) {
     return new TextDecoder().decode(code);
 }
 
-// doc: HTML doc into whose body the navigation header and footer should be injected
-async function injectNavigationAndStyles(doc) {
-    let ignoreStylesClassName = getUniqueClassName(doc, "basaltignorestyles");
-    let headerIdName = getUniqueIdName(doc, "basaltheader");
-    let footerIdName = getUniqueIdName(doc, "basaltfooter");
-    let closeButtonIdName = getUniqueIdName(doc, "basaltclosebook");
-    let returnToTopButtonIdName = getUniqueIdName(doc, "basaltreturntotop");
-    let navigationClassName = getUniqueClassName(doc, "basaltnav");
-    let htmlClassName = getUniqueClassName(doc, "basaltmainhtml");
-    let bodyClassName = getUniqueClassName(doc, "basaltmainbody");
-
-    // Move html element styles and body element content and styles into main
-    let mainHtml = doc.createElement("main");
-    mainHtml.classList.add(htmlClassName);
-
-    if (doc.documentElement.id) {
-        mainHtml.id = doc.documentElement.id;
-        doc.documentElement.removeAttribute("id");
-    }
-    for (let listedClass of doc.documentElement.classList) {
-        mainHtml.classList.add(listedClass);
-    }
-    doc.documentElement.removeAttribute("class");
-    if (doc.documentElement.hasAttribute("style")) {
-        mainHtml.setAttribute("style", doc.documentElement.getAttribute("style"));
-        doc.documentElement.removeAttribute("style");
-    }
-
-    let mainBody = doc.createElement("section");
-    mainBody.classList.add(bodyClassName);
-
-    if (doc.body.id) {
-        mainBody.id = doc.body.id;
-        doc.body.removeAttribute("id");
-    }
-    for (let listedClass of doc.body.classList) {
-        mainBody.classList.add(listedClass);
-    }
-    doc.body.removeAttribute("class");
-    if (doc.body.hasAttribute("style")) {
-        mainBody.setAttribute("style", doc.body.getAttribute("style"));
-        doc.body.removeAttribute("style");
-    }
-
-    mainHtml.append(mainBody);
-
-    while (doc.body.childNodes.length > 0) {
-        mainBody.append(doc.body.firstChild);
-    }
-
+// doc: HTML doc whose head's style elements and links should be modified
+// htmlClassName: class name to reaim head-element-targeted styles towards
+// bodyClassName: class name to reaim body-element-targeted styles towards
+async function reaimStylesheets(doc, htmlClassName, bodyClassName) {
     let stylesheetBearingNodes = doc.querySelectorAll("style, link[rel=stylesheet]");
+
     for (let node of stylesheetBearingNodes) {
         // This text-retrieval step really doesn't seem like it should be necessary? But document.styleSheets is empty at this point in the program, and the individual styles and links' sheet attributes are null, so the workaround is required.
         let nodeSheet;
@@ -280,15 +270,22 @@ async function injectNavigationAndStyles(doc) {
             alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)")
             throw "BasaltLogicError"
         }
+
         let updatedStyleNode = doc.createElement("style");
-        updatedStyleNode.innerHTML = await updateStyles(nodeSheet, bodyClassName, htmlClassName);
+        updatedStyleNode.innerHTML = await updateStylesheet(nodeSheet, bodyClassName, htmlClassName);
         node.parentNode.replaceChild(updatedStyleNode, node);
-        // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
     }
+    // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
+}
 
-    doc.body.append(mainHtml);
-
-    // Inject navigation sections
+// doc: HTML doc into whose body the navigation header and footer should be injected
+// ignoreStylesClassName: class name, unused elsewhere in doc, to indicate that the header and footer should be unaffected by all doc styles
+// headerIdName: ID name for header
+// footerIdName: ID name for footer
+// closeButtonIdName: ID name for "Close book" button in header
+// returnToTopButtonIdName: ID name for "Return to top" button in footer
+// navigationClassName: class name for the header and footer's nav elements
+function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
     let closeBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild);
     closeBookButton.id = closeButtonIdName;
     closeBookButton.classList.add(ignoreStylesClassName);
@@ -325,10 +322,24 @@ async function injectNavigationAndStyles(doc) {
     // Set header and footer dropdown positions
     doc.querySelector("#" + headerIdName + " select [value='" + sectionToTocMap[currentSection.index].header + "']").setAttribute("selected", "selected");
     Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
+}
 
-    let style = doc.createElement("style"); // In the long run, add more user influence over the stylesheet here, and also separate out prepended stylesheet (superseded by book styles) from appended stylesheet (supersedes them)
-    style.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} a {color:orangered;} ." + ignoreStylesClassName + "{all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
-    doc.head.append(style);
+// doc: HTML doc into which Basalt's stylesheets will be injected
+// ignoreStylesClassName: class name indicating that its elements should be unaffected by all doc styles
+// headerIdName: ID name for header
+// footerIdName: ID name for footer
+// closeButtonIdName: ID name for "Close book" button in header
+// returnToTopButtonIdName: ID name for "Return to top" button in footer
+// navigationClassName: class name for the header and footer's nav elements
+function injectStylesheets(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
+    let lowPriorityStyle = doc.createElement("style");
+    let highPriorityStyle = doc.createElement("style");
+
+    lowPriorityStyle.innerHTML = "a {color: orangered;}";
+    doc.head.prepend(lowPriorityStyle);
+
+    highPriorityStyle.innerHTML = "body {all: revert; background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;} ." + ignoreStylesClassName + " {all: revert;} #" + headerIdName + " {background: slateblue; padding: 10px;} #" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;} #" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;} ." + navigationClassName + " {text-align: center;}";
+    doc.head.append(highPriorityStyle);
 }
 
 // doc: HTML doc to inject script into
@@ -343,7 +354,19 @@ function injectUiScript(doc) {
 async function prepareHtmlForDisplay(html) {
     let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
 
-    await injectNavigationAndStyles(parsedHtml);
+    let ignoreStylesClassName = getUniqueClassName(parsedHtml, "basaltignorestyles");
+    let headerIdName = getUniqueIdName(parsedHtml, "basaltheader");
+    let footerIdName = getUniqueIdName(parsedHtml, "basaltfooter");
+    let closeButtonIdName = getUniqueIdName(parsedHtml, "basaltclosebook");
+    let returnToTopButtonIdName = getUniqueIdName(parsedHtml, "basaltreturntotop");
+    let navigationClassName = getUniqueClassName(parsedHtml, "basaltnav");
+    let htmlClassName = getUniqueClassName(parsedHtml, "basaltmainhtml");
+    let bodyClassName = getUniqueClassName(parsedHtml, "basaltmainbody");
+
+    refactorHtmlAndBody(parsedHtml, htmlClassName, bodyClassName);
+    await reaimStylesheets(parsedHtml, htmlClassName, bodyClassName);
+    injectNavigation(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
+    injectStylesheets(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
     injectUiScript(parsedHtml);
 
     return new XMLSerializer().serializeToString(parsedHtml);
@@ -353,7 +376,7 @@ async function prepareHtmlForDisplay(html) {
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
     let newSection = false;
-    if (!currentSection || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
+    if ((!currentSection) || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
         let section = book.spine.get(index);
         if (section) {
             newSection = true;
@@ -385,12 +408,11 @@ async function openBook(file) {
     document.title = "Basalt eBook Reader: " + book.packaging.metadata.title;
 
     await book.opened;
-    currentBookId = book.package.uniqueIdentifier;
-
     let firstLinearSectionIndex = 0;
     while (firstLinearSectionIndex < book.spine.length) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
+            currentBookId = book.package.uniqueIdentifier;
             return;
         } else {
             firstLinearSectionIndex += 1;
@@ -398,6 +420,7 @@ async function openBook(file) {
     }
     console.warn("Book spine is ill-formed. (All spine sections are nonlinear.) Opening into first section as fallback.");
     await displaySection(0);
+    currentBookId = book.package.uniqueIdentifier;
 }
 
 function closeBook() {
