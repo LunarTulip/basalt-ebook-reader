@@ -102,7 +102,7 @@ async function setTocDropdown(toc) {
             tocDropdown.append(entryElement.cloneNode(true));
         } else {
             item.tocInfo = {index: null, fragment: null};
-            console.warn('TOC item with label "' + item.label + '" and href "' + item.href + '" points outside of the book spine and was thus not included in the displayed table of contents.');
+            console.warn(`TOC item with label "${item.label}" and href "${item.href}" points outside of the book spine and was thus not included in the displayed table of contents.`);
         }
     });
 
@@ -303,8 +303,8 @@ function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName
     doc.body.append(footer);
 
     // Set header and footer dropdown positions
-    doc.querySelector("#" + headerIdName + " select [value='" + sectionToTocMap[currentSection.index].header + "']").setAttribute("selected", "selected");
-    Array.from(doc.querySelectorAll("#" + footerIdName + " select [value='" + sectionToTocMap[currentSection.index].footer + "']")).at(-1).setAttribute("selected", "selected");
+    doc.querySelector(`#${headerIdName} select [value='${sectionToTocMap[currentSection.index].header}']`).setAttribute("selected", "selected");
+    Array.from(doc.querySelectorAll(`#${footerIdName} select [value='${sectionToTocMap[currentSection.index].footer}']`)).at(-1).setAttribute("selected", "selected");
 }
 
 // sheet: string representation of CSS stylesheet
@@ -409,8 +409,8 @@ function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
-    lowPriorityStyle.insertRule("." + htmlClassName + " {all: revert;}");
-    lowPriorityStyle.insertRule("." + bodyClassName + " {background: darkslateblue; color: gold;}");
+    lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert;}`);
+    lowPriorityStyle.insertRule(`.${bodyClassName} {background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
     let lowPriorityStyleElement = doc.createElement("style");
@@ -423,21 +423,21 @@ function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName
     // Basalt style (will apply to the Basalt UI and override even highPriorityStyle)
     let basaltStyle = new CSSStyleSheet();
 
-    basaltStyle.insertRule("." + ignoreStylesClassName + " {all: revert;");
-    basaltStyle.insertRule("html {writing-mode: " + writingMode + ";}");
+    basaltStyle.insertRule(`.${ignoreStylesClassName} {all: revert;}`);
 
     if (writingMode === "horizontal-tb") {
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-        basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px;}");
-        basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; margin-top: auto;}");
+        basaltStyle.insertRule(`#${headerIdName} {background: slateblue; padding: 10px;}`);
+        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-top: auto;}`);
     } else {
+        basaltStyle.insertRule(`html {writing-mode: ${writingMode};}`);
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 100vw;}");
-        basaltStyle.insertRule("#" + headerIdName + " {background: slateblue; padding: 10px; min-height: calc(100% - 20px);}");
-        basaltStyle.insertRule("#" + footerIdName + " {background: slateblue; padding: 10px; min-height: calc(100% - 20px); margin-top: auto;}");
+        basaltStyle.insertRule(`#${headerIdName} {background: slateblue; padding: 10px; min-height: calc(100% - 20px);}`);
+        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; min-height: calc(100% - 20px); margin-top: auto;}`);
     }
 
-    basaltStyle.insertRule("#" + closeButtonIdName + ", #" + returnToTopButtonIdName + " {float: left;}");
-    basaltStyle.insertRule("." + navigationClassName + " {text-align: center;}");
+    basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
+    basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
     let basaltStyleElement = doc.createElement("style");
     basaltStyleElement.innerHTML = serializeStylesheet(basaltStyle);
@@ -466,7 +466,6 @@ async function prepareHtmlForDisplay(html) {
     let navigationClassName = getUniqueClassName(parsedHtml, "basaltnav");
     let htmlClassName = getUniqueClassName(parsedHtml, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(parsedHtml, "basaltmainbody");
-
 
     refactorHtmlAndBody(parsedHtml, htmlClassName, bodyClassName);
     injectNavigation(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);

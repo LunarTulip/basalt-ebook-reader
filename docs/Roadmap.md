@@ -2,12 +2,16 @@
 
 Short-term (before release):
 
-- Fill in manifest.
 - Library V1
     - Add less-ugly file picker to the library.
 - Add style editor.
     - Allow users to edit reader styles, both on a global basis and on a per-book basis, and including the option to override book styles or not for each style the users define.
     - Also allow library style to be edited separately from book style.
+- Final release preparations
+    - Add "about" link and any other relevant links to footer
+    - Fill in manifest.
+    - Tighten sandboxing.
+    - Write docs and update readme.
 
 Medium-term (next steps after release):
 
