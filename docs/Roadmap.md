@@ -2,8 +2,6 @@
 
 Short-term (before release):
 
-- Library V1
-    - Add less-ugly file picker to the library.
 - Add style editor.
     - Allow users to edit reader styles, both on a global basis and on a per-book basis, and including the option to override book styles or not for each style the users define.
     - Also allow library style to be edited separately from book style.

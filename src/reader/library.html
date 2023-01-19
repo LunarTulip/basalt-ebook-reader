@@ -1,19 +1,25 @@
 <!DOCTYPE html>
-<html lang="en"> <!-- Currently a blank test page; more features to be added, and perhaps a rename to be done if it doesn't end up librarylike in functionality -->
+<html lang="en">
     <head>
         <meta charset="utf-8">
         <title>Basalt eBook Reader</title>
         <link rel="stylesheet" href="library.css"> 
     </head>
-    <body>
+    <body id="dropzone">
         <header>
             <input type="button" value="Placeholder">
         </header>
         <main>
-            <input type="file" id="choosefile"> <!-- For testing; replace with something nicer -->
+            <section>
+                <button type="button" name="Open File" id="openfile">
+                    <p>+</p>
+                    <input type="file" id="openfileinput">
+                </button>
+                <p>Open a new file.</p>
+            </section>
         </main>
         <footer>
-            <input type="button" value="Placeholder">
+            <input type="button" value="Return to top" id="returntotop">
         </footer>
         <script src="library.js"></script>
     </body>
