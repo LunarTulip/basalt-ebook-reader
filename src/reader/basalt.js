@@ -8,19 +8,22 @@ let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js")
 
 // LightningCSS-relevant information
 
-let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // If fulfilled, LightningCSS is usable
-let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Firefox major version, formatted in LightningCSS-comprehensible format
+let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // Promise such that, if fulfilled, LightningCSS is usable
+let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Promise wrapping the Firefox major version, formatted in LightningCSS-comprehensible format
 
 // epub.js objects
 
 var book; // The currently-opened epub.js ePub object
 var currentSection; // The currently-displayed epub.js Section object
 var currentBookId; // The unique ID of the book from which the current section is sourced
-var currentDirectory; // Path to the directory housing currentSection
 
 // basalt.js internal logic
 
+var currentDirectory; // Path to the directory housing currentSection
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
+var currentDoc; // XHTML source of the last opened book section
+var library; // promise wrapping the HTML source of the library
+var libraryReopenAllowed = false; // Whether the "Reopen book" button in the library is enabled
 
 // basalt.html elements
 
@@ -30,9 +33,41 @@ var bookIframe = document.getElementById("book"); // The iframe to which to rend
 
 var navigation = document.getElementById("navtemplate").content.firstElementChild; // Navigation node for insertion into header/footer
 
-///////////////////
-//   Rendering   //
-///////////////////
+/////////////////
+//   Helpers   //
+/////////////////
+
+// sheet: CSSStyleSheet element
+// Returns string representation of sheet
+function serializeStylesheet(sheet) {
+    return Array.from(sheet.cssRules).reverse().map(rule => rule.cssText).join("\n");
+}
+
+////////////////////////
+//   Render Library   //
+////////////////////////
+
+// reopenAllowed: bool, if false then the "Reopen book" button gets disabled
+// Returns promise wrapping the output library HTML
+function generateLibrary(reopenAllowed) {
+    return new Promise((resolve, _reject) => {
+        let libraryRequest = new XMLHttpRequest();
+        libraryRequest.open("GET", "library.html");
+        libraryRequest.responseType = "document";
+        libraryRequest.onload = _ => {
+            let libraryDocument = libraryRequest.responseXML;
+            if (!reopenAllowed) {
+                libraryDocument.getElementById("reopenbook").setAttribute("disabled", "disabled");
+            }
+            resolve(new XMLSerializer().serializeToString(libraryDocument));
+        };
+        libraryRequest.send();
+    });
+}
+
+/////////////////////
+//   Render Book   //
+/////////////////////
 
 // tocArray: array of book TOC objects, either the top-level TOC or a descendant
 // ancestorCount: number of ancestors above toc_array in the TOC's nesting structure (0 for the top-level TOC array)
@@ -160,61 +195,6 @@ function getUniqueIdName(doc, baseName) {
         idName = "_" + idName;
     }
     return idName;
-}
-
-// element: HTML element to get a list of applicable rules for
-// sheets: array of CSSStyleSheet elements
-function getApplicableRules(element, sheets) {
-    let rules = [];
-
-    for (let sheet of sheets) {
-        for (let rule of sheet.cssRules) {
-            if (element.matches(rule.selectorText)) {
-                rules.push(rule.cssText);
-            }
-        }
-    }
-
-    return rules;
-}
-
-// doc: HTML doc to check for whether it's made up of vertical text
-// docSheets: array of stylesheets in doc
-// htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
-// returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
-function getMainWritingMode(doc, docSheets, htmlClassName) {
-    let hydratedSheets = docSheets.map(sheetInfo => {
-        let hydratedSheet = new CSSStyleSheet();
-        hydratedSheet.replaceSync(sheetInfo.sheet);
-        return hydratedSheet;
-    });
-
-    let currentlyCheckedElement = doc.getElementsByClassName(htmlClassName)[0];
-    let writingMode = "horizontal-tb";
-
-    while (true) {
-        let currentElementRules = getApplicableRules(currentlyCheckedElement, hydratedSheets);
-        for (let rule of currentElementRules) {
-            if (rule.includes("writing-mode:")) {
-                let mode = rule.split("writing-mode:").at(-1);
-                if (mode.includes("horizontal-tb") || mode.includes("initial")) {
-                    writingMode = ("horizontal-tb");
-                } else if (mode.includes("vertical-rl")) {
-                    writingMode = ("vertical-rl");
-                } else if (mode.includes("vertical-lr")) {
-                    writingMode = ("vertical-lr");
-                }
-            }
-        }
-        
-        if (currentlyCheckedElement.children.length === 1) {
-            currentlyCheckedElement = currentlyCheckedElement.children[0];
-        } else {
-            break;
-        }
-    }
-
-    return writingMode;
 }
 
 // doc: HTML doc whose html and body elements should be refactored into divs
@@ -389,10 +369,59 @@ async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
     // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
 
-// sheet: CSSStyleSheet element
-// Returns string representation of sheet
-function serializeStylesheet(sheet) {
-    return Array.from(sheet.cssRules).reverse().map(rule => rule.cssText).join("\n");
+// element: HTML element to get a list of applicable rules for
+// sheets: array of CSSStyleSheet elements
+function getApplicableRules(element, sheets) {
+    let rules = [];
+
+    for (let sheet of sheets) {
+        for (let rule of sheet.cssRules) {
+            if (element.matches(rule.selectorText)) {
+                rules.push(rule.cssText);
+            }
+        }
+    }
+
+    return rules;
+}
+
+// doc: HTML doc to check for whether it's made up of vertical text
+// docSheets: array of stylesheets in doc
+// htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
+// returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
+function getMainWritingMode(doc, docSheets, htmlClassName) {
+    let hydratedSheets = docSheets.map(sheetInfo => {
+        let hydratedSheet = new CSSStyleSheet();
+        hydratedSheet.replaceSync(sheetInfo.sheet);
+        return hydratedSheet;
+    });
+
+    let currentlyCheckedElement = doc.getElementsByClassName(htmlClassName)[0];
+    let writingMode = "horizontal-tb";
+
+    while (true) {
+        let currentElementRules = getApplicableRules(currentlyCheckedElement, hydratedSheets);
+        for (let rule of currentElementRules) {
+            if (rule.includes("writing-mode:")) {
+                let mode = rule.split("writing-mode:").at(-1);
+                if (mode.includes("horizontal-tb") || mode.includes("initial")) {
+                    writingMode = ("horizontal-tb");
+                } else if (mode.includes("vertical-rl")) {
+                    writingMode = ("vertical-rl");
+                } else if (mode.includes("vertical-lr")) {
+                    writingMode = ("vertical-lr");
+                }
+            }
+        }
+
+        if (currentlyCheckedElement.children.length === 1) {
+            currentlyCheckedElement = currentlyCheckedElement.children[0];
+        } else {
+            break;
+        }
+    }
+
+    return writingMode;
 }
 
 // doc: HTML doc into which Basalt's stylesheets will be injected
@@ -404,13 +433,11 @@ function serializeStylesheet(sheet) {
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
 // htmlClassName: class name for the html element of the opened book section
-// bodyClassName: class name for the body element of the opened book section
-function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName) {
+function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
-    lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert;}`);
-    lowPriorityStyle.insertRule(`.${bodyClassName} {background: darkslateblue; color: gold;}`);
+    lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
     let lowPriorityStyleElement = doc.createElement("style");
@@ -452,29 +479,38 @@ function injectUiScript(doc) {
     doc.body.append(scriptElement);
 }
 
-// html: string representationn of HTML doc to prepare
-async function prepareHtmlForDisplay(html) {
-    let parsedHtml = new DOMParser().parseFromString(html, "application/xhtml+xml");
+// html: string representationn of XHTML doc to prepare
+// Returns the input XHTML doc, morphed from its book-native form for effective rendering in the book iframe
+async function prepareBookXhtmlForDisplay(xhtml) {
+    let parsedXhtml = new DOMParser().parseFromString(xhtml, "application/xhtml+xml");
 
-    let stylesheets = getStylesheets(parsedHtml);
+    let stylesheets = getStylesheets(parsedXhtml);
 
-    let ignoreStylesClassName = getUniqueClassName(parsedHtml, "basaltignorestyles");
-    let headerIdName = getUniqueIdName(parsedHtml, "basaltheader");
-    let footerIdName = getUniqueIdName(parsedHtml, "basaltfooter");
-    let closeButtonIdName = getUniqueIdName(parsedHtml, "basaltclosebook");
-    let returnToTopButtonIdName = getUniqueIdName(parsedHtml, "basaltreturntotop");
-    let navigationClassName = getUniqueClassName(parsedHtml, "basaltnav");
-    let htmlClassName = getUniqueClassName(parsedHtml, "basaltmainhtml");
-    let bodyClassName = getUniqueClassName(parsedHtml, "basaltmainbody");
+    let ignoreStylesClassName = getUniqueClassName(parsedXhtml, "basaltignorestyles");
+    let headerIdName = getUniqueIdName(parsedXhtml, "basaltheader");
+    let footerIdName = getUniqueIdName(parsedXhtml, "basaltfooter");
+    let closeButtonIdName = getUniqueIdName(parsedXhtml, "basaltclosebook");
+    let returnToTopButtonIdName = getUniqueIdName(parsedXhtml, "basaltreturntotop");
+    let navigationClassName = getUniqueClassName(parsedXhtml, "basaltnav");
+    let htmlClassName = getUniqueClassName(parsedXhtml, "basaltmainhtml");
+    let bodyClassName = getUniqueClassName(parsedXhtml, "basaltmainbody");
 
-    refactorHtmlAndBody(parsedHtml, htmlClassName, bodyClassName);
-    injectNavigation(parsedHtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
-    await reaimStylesheets(parsedHtml, await stylesheets, htmlClassName, bodyClassName);
-    let writingMode = getMainWritingMode(parsedHtml, await stylesheets, htmlClassName);
-    injectStylesheets(parsedHtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
-    injectUiScript(parsedHtml);
+    refactorHtmlAndBody(parsedXhtml, htmlClassName, bodyClassName);
+    injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
+    await reaimStylesheets(parsedXhtml, await stylesheets, htmlClassName, bodyClassName);
+    let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
+    injectStylesheets(parsedXhtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
+    injectUiScript(parsedXhtml);
 
-    return new XMLSerializer().serializeToString(parsedHtml);
+    return new XMLSerializer().serializeToString(parsedXhtml);
+}
+
+////////////////////
+//   Navigation   //
+////////////////////
+
+async function openLibrary() {
+    bookIframe.setAttribute("srcdoc", await library);
 }
 
 // index: numerical index into spine
@@ -491,9 +527,10 @@ async function displaySection(index, fragment) {
             window.scrollTo(0, 0);
             currentSection = section;
             currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
-            section.render(book.load.bind(book)).then(async html => {
-                let htmlToDisplay = await prepareHtmlForDisplay(html);
-                bookIframe.setAttribute("srcdoc", htmlToDisplay);
+            section.render(book.load.bind(book)).then(async xhtml => {
+                let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
+                currentDoc = xhtmlToDisplay;
+                bookIframe.setAttribute("srcdoc", xhtmlToDisplay);
             });
         }
     }
@@ -510,35 +547,43 @@ async function openBook(file) {
     setTocDropdown(book.navigation.toc);
 
     await book.loaded.metadata;
-    document.title = "Basalt eBook Reader: " + book.packaging.metadata.title;
+    document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
 
     await book.opened;
     let firstLinearSectionIndex = 0;
-    while (firstLinearSectionIndex < book.spine.length) {
+    let displayed = false;
+    while ((firstLinearSectionIndex < book.spine.length) && !displayed) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
             currentBookId = book.package.uniqueIdentifier;
-            return;
+            displayed = true;
         } else {
             firstLinearSectionIndex += 1;
         }
     }
-    console.warn("Book spine is ill-formed. (All spine sections are nonlinear.) Opening into first section as fallback.");
-    await displaySection(0);
-    currentBookId = book.package.uniqueIdentifier;
+    if (!displayed) {
+        console.warn("Book spine is ill-formed. (All spine sections are nonlinear.) Opening into first section as fallback.");
+        await displaySection(0);
+        currentBookId = book.package.uniqueIdentifier;
+    }
+
+    if (!libraryReopenAllowed) {
+        libraryReopenAllowed = true;
+        library = generateLibrary(true);
+    }
 }
 
 function closeBook() {
     document.title = "Basalt eBook Reader: Library";
     currentBookId = undefined;
-    bookIframe.removeAttribute("srcdoc");
+    openLibrary();
 }
 
-// Save current srcdoc when closing and then have a resume function in the library? (Book stays in memory until a new book is opened, so it'd be cheap.)
-
-////////////////////
-//   Navigation   //
-////////////////////
+function resumeBook() {
+    document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
+    currentBookId = book.package.uniqueIdentifier;
+    bookIframe.setAttribute("srcdoc", currentDoc);
+}
 
 async function nextSection() {
     let nextLinearSectionIndex = currentSection.index + 1;
@@ -573,6 +618,8 @@ window.addEventListener("message", basaltMessage => {
     if (basaltMessage.origin === browser.runtime.getURL("").slice(undefined, -1)) {
         if (basaltMessage.data.messageType === "BasaltOpenBook") {
             openBook(basaltMessage.data.book);
+        } else if (basaltMessage.data.messageType === "BasaltResumeBook") {
+            resumeBook();
         } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
             closeBook();
         } else if (basaltMessage.data.messageType === "BasaltNextSection") {
@@ -584,3 +631,6 @@ window.addEventListener("message", basaltMessage => {
         }
     }
 });
+
+library = generateLibrary(false);
+openLibrary();

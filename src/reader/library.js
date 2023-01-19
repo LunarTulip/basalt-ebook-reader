@@ -1,6 +1,7 @@
 "use strict";
 
-let dropZone = document.getElementById("dropzone")
+let dropZone = document.getElementById("dropzone");
+let reopenBook = document.getElementById("reopenbook")
 let openFile = document.getElementById("openfile");
 let openFileInput = document.getElementById("openfileinput");
 let returnToTop = document.getElementById("returntotop");
@@ -16,8 +17,11 @@ dropZone.addEventListener("dragover", event => {
 dropZone.addEventListener("drop", event => {
     event.stopPropagation();
     event.preventDefault();
-
     event.dataTransfer.files[0].arrayBuffer().then(bookBuffer => parent.postMessage({messageType: "BasaltOpenBook", book: bookBuffer}, parent.document.documentURI, [bookBuffer]));
+});
+
+reopenBook.addEventListener("click", _ => {
+    parent.postMessage({messageType: "BasaltResumeBook"}, parent.document.documentURI);
 });
 
 openFile.addEventListener("click", _ => {
