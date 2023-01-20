@@ -21,8 +21,9 @@ var currentBookId; // The unique ID of the book from which the current section i
 
 var currentDirectory; // Path to the directory housing currentSection
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
-var currentDoc; // XHTML source of the last opened book section
-var library; // promise wrapping the HTML source of the library
+var currentSectionSource; // XHTML source of the last opened book section
+
+var librarySource; // promise wrapping the HTML source of the library
 var libraryReopenAllowed = false; // Whether the "Reopen book" button in the library is enabled
 
 // basalt.html elements
@@ -43,6 +44,23 @@ function serializeStylesheet(sheet) {
     return Array.from(sheet.cssRules).reverse().map(rule => rule.cssText).join("\n");
 }
 
+// doc: document in which to create the link
+// sheet: string representation of sheet to place at the link
+// Returns a link element pointing at sheet
+function stylesheetToBlobLink(doc, sheet) {
+    let sheetBlob = new Blob([sheet], {
+        type: "text/css",
+    });
+    let sheetUrl = URL.createObjectURL(sheetBlob);
+
+    // Currently the blobs never get released until page close, so memory leaks. Fix this.
+
+    let link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet");
+    link.setAttribute("href", sheetUrl);
+    return link;
+}
+
 ////////////////////////
 //   Render Library   //
 ////////////////////////
@@ -60,10 +78,10 @@ function injectLibraryStylesheet(doc) {
     style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
+    style.insertRule(".testp1 > .testp2 {color: green}");
 
-    let styleElement = doc.createElement("style");
-    styleElement.innerHTML = serializeStylesheet(style);
-    doc.head.append(styleElement);
+    let styleLink = stylesheetToBlobLink(doc, serializeStylesheet(style));
+    doc.head.append(styleLink);
 }
 
 // doc: HTML doc representing library.html, to be prepared for display
@@ -197,7 +215,7 @@ async function getStylesheets(doc) {
             sheetText = await fetch(node.href).then(async content => await content.text());
         } else {
             alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)");
-            throw "BasaltLogicError";
+            throw "BasaltInternalError";
         }
 
         let hydratedSheet = new CSSStyleSheet();
@@ -391,15 +409,14 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
         let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet), htmlClassName, bodyClassName);
-        let reaimedNode = doc.createElement("style");
+        let reaimedSheetNode = stylesheetToBlobLink(doc, reaimedSheetString);
         let reaimedSheet = new CSSStyleSheet();
         reaimedSheet.replaceSync(reaimedSheetString);
 
-        reaimedNode.innerHTML = reaimedSheetString;
-        sheetInfo.node.parentNode.replaceChild(reaimedNode, sheetInfo.node);
+        sheetInfo.node.parentNode.replaceChild(reaimedSheetNode, sheetInfo.node);
 
         sheetInfo.sheet = reaimedSheet;
-        sheetInfo.node = reaimedNode;
+        sheetInfo.node = reaimedSheetNode;
     }
     // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
@@ -471,9 +488,8 @@ function injectBookSectionStylesheets(doc, writingMode, ignoreStylesClassName, h
     lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
-    let lowPriorityStyleElement = doc.createElement("style");
-    lowPriorityStyleElement.innerHTML = serializeStylesheet(lowPriorityStyle);
-    doc.head.prepend(lowPriorityStyleElement);
+    let lowPriorityStyleLink = stylesheetToBlobLink(doc, serializeStylesheet(lowPriorityStyle));
+    doc.head.prepend(lowPriorityStyleLink);
 
     // High-priority style (will override the book's stylesheets)
     // Currently undefined, pending work on the style editor
@@ -497,9 +513,8 @@ function injectBookSectionStylesheets(doc, writingMode, ignoreStylesClassName, h
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
-    let basaltStyleElement = doc.createElement("style");
-    basaltStyleElement.innerHTML = serializeStylesheet(basaltStyle);
-    doc.head.append(basaltStyleElement);
+    let basaltStyleLink = stylesheetToBlobLink(doc, serializeStylesheet(basaltStyle));
+    doc.head.prepend(basaltStyleLink);
 }
 
 // doc: XHTML doc to inject script into
@@ -541,7 +556,7 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 ////////////////////
 
 async function openLibrary() {
-    bookIframe.setAttribute("srcdoc", await library);
+    bookIframe.setAttribute("srcdoc", await librarySource);
 }
 
 // index: numerical index into spine
@@ -560,7 +575,7 @@ async function displaySection(index, fragment) {
             currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
             section.render(book.load.bind(book)).then(async xhtml => {
                 let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
-                currentDoc = xhtmlToDisplay;
+                currentSectionSource = xhtmlToDisplay;
                 bookIframe.setAttribute("srcdoc", xhtmlToDisplay);
             });
         }
@@ -603,7 +618,7 @@ async function openBook(file) {
 
     if (!libraryReopenAllowed) {
         libraryReopenAllowed = true;
-        library = generateLibrary(true);
+        librarySource = generateLibrary(true);
     }
 }
 
@@ -616,7 +631,7 @@ function closeBook() {
 function resumeBook() {
     document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
     currentBookId = book.package.uniqueIdentifier;
-    bookIframe.setAttribute("srcdoc", currentDoc);
+    bookIframe.setAttribute("srcdoc", currentSectionSource);
 }
 
 async function nextSection() {
@@ -666,5 +681,5 @@ window.addEventListener("message", basaltMessage => {
     }
 });
 
-library = generateLibrary(false);
+librarySource = generateLibrary(false);
 openLibrary();
