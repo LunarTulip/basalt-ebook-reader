@@ -47,6 +47,38 @@ function serializeStylesheet(sheet) {
 //   Render Library   //
 ////////////////////////
 
+// doc: HTML doc representing library.html, to have styles inserted
+function injectLibraryStylesheet(doc) {
+    let style = new CSSStyleSheet;
+
+    style.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
+    style.insertRule("header {background: slateblue; padding: 10px;}");
+    style.insertRule("footer {background: slateblue; padding: 10px; margin-top: auto;}");
+    style.insertRule("main {display: flex; flex-direction: row; flex-wrap: wrap;}");
+    style.insertRule("main section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
+    style.insertRule("main button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
+    style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
+    style.insertRule("#openfileinput {display: none;}");
+    style.insertRule("#reopenbook, #returntotop {float: left;}");
+
+    let styleElement = doc.createElement("style");
+    styleElement.innerHTML = serializeStylesheet(style);
+    doc.head.append(styleElement);
+}
+
+// doc: HTML doc representing library.html, to be prepared for display
+// reopenAllowed: bool, if false then the "Reopen book" button gets disabled
+// Returns string representation of doc, now customized for display for the user
+function prepareLibraryDocForDisplay(doc, reopenAllowed) {
+    if (!reopenAllowed) {
+        doc.getElementById("reopenbook").setAttribute("disabled", "disabled");
+    }
+
+    injectLibraryStylesheet(doc);
+
+    return new XMLSerializer().serializeToString(doc);
+}
+
 // reopenAllowed: bool, if false then the "Reopen book" button gets disabled
 // Returns promise wrapping the output library HTML
 function generateLibrary(reopenAllowed) {
@@ -55,11 +87,7 @@ function generateLibrary(reopenAllowed) {
         libraryRequest.open("GET", "library.html");
         libraryRequest.responseType = "document";
         libraryRequest.onload = _ => {
-            let libraryDocument = libraryRequest.responseXML;
-            if (!reopenAllowed) {
-                libraryDocument.getElementById("reopenbook").setAttribute("disabled", "disabled");
-            }
-            resolve(new XMLSerializer().serializeToString(libraryDocument));
+            resolve(prepareLibraryDocForDisplay(libraryRequest.responseXML, reopenAllowed));
         };
         libraryRequest.send();
     });
@@ -154,7 +182,7 @@ async function setTocDropdown(toc) {
     });
 }
 
-// doc: HTML doc to retrieve stylesheets from
+// doc: XHTML doc to retrieve stylesheets from
 // Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from and "sheet" to the text of said stylesheet
 async function getStylesheets(doc) {
     let sheets = [];
@@ -175,7 +203,7 @@ async function getStylesheets(doc) {
     return sheets;
 }
 
-// doc: HTML doc to check uniqueness against
+// doc: XHTML doc to check uniqueness against
 // baseName: name to use if possible, or use in modified form otherwise
 // Returns basename with as many underscores prepended as necessary to make sure nothing in doc has that class name
 function getUniqueClassName(doc, baseName) {
@@ -186,7 +214,7 @@ function getUniqueClassName(doc, baseName) {
     return className;
 }
 
-// doc: HTML doc to check uniqueness against
+// doc: XHTML doc to check uniqueness against
 // baseName: name to use if possible, or use in modified form otherwise
 // Returns basename with as many underscores prepended as necessary to make sure nothing in doc has that id name
 function getUniqueIdName(doc, baseName) {
@@ -197,7 +225,7 @@ function getUniqueIdName(doc, baseName) {
     return idName;
 }
 
-// doc: HTML doc whose html and body elements should be refactored into divs
+// doc: XHTML doc whose html and body elements should be refactored into divs
 // htmlClassName: class name, unique within doc, to place on the html div
 // bodyClassName: class name, unique within doc, to place on the body div
 function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
@@ -241,7 +269,7 @@ function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
     doc.body.append(mainHtml);
 }
 
-// doc: HTML doc into whose body the navigation header and footer should be injected
+// doc: XHTML doc into whose body the navigation header and footer should be injected
 // ignoreStylesClassName: class name, unused elsewhere in doc, to indicate that the header and footer should be unaffected by all doc styles
 // headerIdName: ID name for header
 // footerIdName: ID name for footer
@@ -351,7 +379,7 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
     return new TextDecoder().decode(code);
 }
 
-// doc: HTML doc whose head's style elements and links should be modified
+// doc: XHTML doc whose head's style elements and links should be modified
 // docSheets: array of stylesheets in doc
 // htmlClassName: class name to reaim head-element-targeted styles towards
 // bodyClassName: class name to reaim body-element-targeted styles towards
@@ -369,7 +397,7 @@ async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
     // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
 
-// element: HTML element to get a list of applicable rules for
+// element: Element to get a list of applicable rules for
 // sheets: array of CSSStyleSheet elements
 function getApplicableRules(element, sheets) {
     let rules = [];
@@ -385,7 +413,7 @@ function getApplicableRules(element, sheets) {
     return rules;
 }
 
-// doc: HTML doc to check for whether it's made up of vertical text
+// doc: XHTML doc to check for whether it's made up of vertical text
 // docSheets: array of stylesheets in doc
 // htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
 // returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
@@ -424,7 +452,7 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
     return writingMode;
 }
 
-// doc: HTML doc into which Basalt's stylesheets will be injected
+// doc: XHTML doc into which Basalt's stylesheets will be injected
 // writingMode: writing mode in which doc is set to be displayed
 // ignoreStylesClassName: class name indicating that its elements should be unaffected by all doc styles
 // headerIdName: ID name for header
@@ -433,7 +461,7 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
 // htmlClassName: class name for the html element of the opened book section
-function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
+function injectBookSectionStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
@@ -471,7 +499,7 @@ function injectStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName
     doc.head.append(basaltStyleElement);
 }
 
-// doc: HTML doc to inject script into
+// doc: XHTML doc to inject script into
 function injectUiScript(doc) {
     let scriptUri = browser.runtime.getURL("reader/basalt-ui.js");
     let scriptElement = doc.createElement("script");
@@ -479,7 +507,7 @@ function injectUiScript(doc) {
     doc.body.append(scriptElement);
 }
 
-// html: string representationn of XHTML doc to prepare
+// xhtml: string representationn of XHTML doc to prepare
 // Returns the input XHTML doc, morphed from its book-native form for effective rendering in the book iframe
 async function prepareBookXhtmlForDisplay(xhtml) {
     let parsedXhtml = new DOMParser().parseFromString(xhtml, "application/xhtml+xml");
@@ -499,7 +527,7 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
     await reaimStylesheets(parsedXhtml, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
-    injectStylesheets(parsedXhtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
+    injectBookSectionStylesheets(parsedXhtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
     injectUiScript(parsedXhtml);
 
     return new XMLSerializer().serializeToString(parsedXhtml);
@@ -543,15 +571,18 @@ async function displaySection(index, fragment) {
 async function openBook(file) {
     book = ePub(file);
 
-    await book.loaded.navigation;
-    setTocDropdown(book.navigation.toc);
+    book.loaded.metadata.then(_ => {
+        document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
+    });
 
-    await book.loaded.metadata;
-    document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
+    let tocSet = book.loaded.navigation.then(_ => {
+        setTocDropdown(book.navigation.toc);
+    });
 
     await book.opened;
     let firstLinearSectionIndex = 0;
     let displayed = false;
+    await tocSet;
     while ((firstLinearSectionIndex < book.spine.length) && !displayed) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
