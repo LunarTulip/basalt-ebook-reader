@@ -78,7 +78,6 @@ function injectLibraryStylesheet(doc) {
     style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
-    style.insertRule(".testp1 > .testp2 {color: green}");
 
     let styleLink = stylesheetToBlobLink(doc, serializeStylesheet(style));
     doc.head.append(styleLink);
