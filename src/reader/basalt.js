@@ -49,7 +49,7 @@ function serializeStylesheet(sheet) {
 
 // doc: HTML doc representing library.html, to have styles inserted
 function injectLibraryStylesheet(doc) {
-    let style = new CSSStyleSheet;
+    let style = new CSSStyleSheet();
 
     style.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
     style.insertRule("header {background: slateblue; padding: 10px;}");
@@ -183,21 +183,26 @@ async function setTocDropdown(toc) {
 }
 
 // doc: XHTML doc to retrieve stylesheets from
-// Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from and "sheet" to the text of said stylesheet
+// Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from and "sheet" to a CSSStyleSheet representation of said stylesheet
 async function getStylesheets(doc) {
     let sheets = [];
 
     let stylesheetBearingNodes = doc.querySelectorAll("style, link[rel=stylesheet]");
 
+    let sheetText;
     for (let node of stylesheetBearingNodes) {
         if (node.tagName == "style") {
-            sheets.push({node: node, sheet: node.innerHTML});
+            sheetText = node.innerHTML;
         } else if (node.tagName == "link") {
-            sheets.push({node: node, sheet: await fetch(node.href).then(async content => await content.text())});
+            sheetText = await fetch(node.href).then(async content => await content.text());
         } else {
             alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)");
             throw "BasaltLogicError";
         }
+
+        let hydratedSheet = new CSSStyleSheet();
+        hydratedSheet.replaceSync(sheetText);
+        sheets.push({node: node, sheet: hydratedSheet});
     }
 
     return sheets;
@@ -385,11 +390,13 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 // bodyClassName: class name to reaim body-element-targeted styles towards
 async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
-        let reaimedSheet = await reaimStylesheet(sheetInfo.sheet, htmlClassName, bodyClassName);
+        let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet), htmlClassName, bodyClassName);
         let reaimedNode = doc.createElement("style");
+        let reaimedSheet = new CSSStyleSheet();
+        reaimedSheet.replaceSync(reaimedSheetString);
 
-        reaimedNode.innerHTML = reaimedSheet;
-        sheetInfo.node.parentNode.replaceChild(reaimedNode, sheetInfo.node)
+        reaimedNode.innerHTML = reaimedSheetString;
+        sheetInfo.node.parentNode.replaceChild(reaimedNode, sheetInfo.node);
 
         sheetInfo.sheet = reaimedSheet;
         sheetInfo.node = reaimedNode;
@@ -418,17 +425,13 @@ function getApplicableRules(element, sheets) {
 // htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
 // returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
 function getMainWritingMode(doc, docSheets, htmlClassName) {
-    let hydratedSheets = docSheets.map(sheetInfo => {
-        let hydratedSheet = new CSSStyleSheet();
-        hydratedSheet.replaceSync(sheetInfo.sheet);
-        return hydratedSheet;
-    });
+    let sheetsWithoutNodes = docSheets.map(sheetInfo => sheetInfo.sheet);
 
     let currentlyCheckedElement = doc.getElementsByClassName(htmlClassName)[0];
     let writingMode = "horizontal-tb";
 
     while (true) {
-        let currentElementRules = getApplicableRules(currentlyCheckedElement, hydratedSheets);
+        let currentElementRules = getApplicableRules(currentlyCheckedElement, sheetsWithoutNodes);
         for (let rule of currentElementRules) {
             if (rule.includes("writing-mode:")) {
                 let mode = rule.split("writing-mode:").at(-1);
