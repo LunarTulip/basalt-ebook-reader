@@ -261,9 +261,7 @@ async function getStylesheets(doc) {
             throw "BasaltInternalError";
         }
 
-        let hydratedSheet = new CSSStyleSheet();
-        hydratedSheet.replaceSync(sheetText);
-        sheets.push({node: node, sheet: hydratedSheet});
+        sheets.push({node: node, sheetText: sheetText, hydratedSheet: null});
     }
 
     return sheets;
@@ -450,17 +448,20 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 // docSheets: array of stylesheets in doc
 // htmlClassName: class name to reaim head-element-targeted styles towards
 // bodyClassName: class name to reaim body-element-targeted styles towards
-async function reaimStylesheets(doc, docId, docSheets, htmlClassName, bodyClassName) {
+async function reaimAndHydrateStylesheets(doc, docId, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
-        let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet, false), htmlClassName, bodyClassName);
-        let reaimedSheetNode = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, reaimedSheetString);
-        let reaimedSheet = new CSSStyleSheet();
-        reaimedSheet.replaceSync(reaimedSheetString);
+        let firstPassReaimedSheetText = await reaimStylesheet(sheetInfo.sheetText, htmlClassName, bodyClassName);
+        let hydratedSheet = new CSSStyleSheet();
+        hydratedSheet.replaceSync(firstPassReaimedSheetText);
+        // Doing two passes avoids redundant console-spam about any invalid styles that remain
+        let secondPassReaimedSheetText = serializeStylesheet(hydratedSheet, false);
+        let reaimedSheetNode = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, secondPassReaimedSheetText);
 
         sheetInfo.node.parentNode.replaceChild(reaimedSheetNode, sheetInfo.node);
 
-        sheetInfo.sheet = reaimedSheet;
         sheetInfo.node = reaimedSheetNode;
+        sheetInfo.sheetText = secondPassReaimedSheetText;
+        sheetInfo.hydratedSheet = hydratedSheet;
     }
     // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
@@ -486,13 +487,13 @@ function getApplicableRules(element, sheets) {
 // htmlClassName: class name, unique within the doc, whose element's writing mode needs to be checked
 // returns "vertical-rl" or "vertical-lr" if that writing mode applies to all bottom-level leaves of the tree of htmlClassName's associated element's descendants; else returns "horizontal-tb"
 function getMainWritingMode(doc, docSheets, htmlClassName) {
-    let sheetsWithoutNodes = docSheets.map(sheetInfo => sheetInfo.sheet);
+    let hydratedSheets = docSheets.map(sheetInfo => sheetInfo.hydratedSheet);
 
     let currentlyCheckedElement = doc.getElementsByClassName(htmlClassName)[0];
     let writingMode = "horizontal-tb";
 
     while (true) {
-        let currentElementRules = getApplicableRules(currentlyCheckedElement, sheetsWithoutNodes);
+        let currentElementRules = getApplicableRules(currentlyCheckedElement, hydratedSheets);
         for (let rule of currentElementRules) {
             if (rule.includes("writing-mode:")) {
                 let mode = rule.split("writing-mode:").at(-1);
@@ -591,7 +592,7 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 
     refactorHtmlAndBody(parsedXhtml, htmlClassName, bodyClassName);
     injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
-    await reaimStylesheets(parsedXhtml, sectionId, await stylesheets, htmlClassName, bodyClassName);
+    await reaimAndHydrateStylesheets(parsedXhtml, sectionId, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
     injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
     injectUiScript(parsedXhtml);
