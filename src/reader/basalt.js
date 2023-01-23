@@ -50,9 +50,15 @@ function getUniqueId() {
 }
 
 // sheet: CSSStyleSheet element
+// reverse: bool, whether or not to reverse the order of rules in the sheet
 // Returns string representation of sheet
-function serializeStylesheet(sheet) {
-    return Array.from(sheet.cssRules).reverse().map(rule => rule.cssText).join("\n");
+function serializeStylesheet(sheet, reverse) {
+    let sheetRules = Array.from(sheet.cssRules);
+    if (reverse) {
+        return sheetRules.reverse().map(rule => rule.cssText).join("\n");
+    } else {
+        return sheetRules.map(rule => rule.cssText).join("\n");
+    }
 }
 
 // doc: document in which to create the link
@@ -105,7 +111,7 @@ function injectLibraryStylesheet(doc, docId) {
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
 
-    let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style));
+    let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style, true));
     doc.head.append(styleLink);
 }
 
@@ -446,7 +452,7 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 // bodyClassName: class name to reaim body-element-targeted styles towards
 async function reaimStylesheets(doc, docId, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
-        let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet), htmlClassName, bodyClassName);
+        let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet, false), htmlClassName, bodyClassName);
         let reaimedSheetNode = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, reaimedSheetString);
         let reaimedSheet = new CSSStyleSheet();
         reaimedSheet.replaceSync(reaimedSheetString);
@@ -527,7 +533,7 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
     lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
-    let lowPriorityStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(lowPriorityStyle));
+    let lowPriorityStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(lowPriorityStyle, true));
     doc.head.prepend(lowPriorityStyleLink);
 
     // High-priority style (will override the book's stylesheets)
@@ -552,7 +558,7 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
-    let basaltStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(basaltStyle));
+    let basaltStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(basaltStyle, true));
     doc.head.prepend(basaltStyleLink);
 }
 
