@@ -19,12 +19,18 @@ var currentBookId; // The unique ID of the book from which the current section i
 
 // basalt.js internal logic
 
+var nextUniqueId = new Uint32Array(new ArrayBuffer(4)); // For manipulation via Atomics as a source of UIDs
+
 var currentDirectory; // Path to the directory housing currentSection
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
 var currentSectionSource; // XHTML source of the last opened book section
+var currentSectionSourceId; // Unique ID of currentSectionSource; will change if currentSectionSource does
+var sectionIdToBlobsMap = {}; // Map from section UIDs to object with two properties, "doneDisplaying" (true if the section has been or won't ever be displayed) and "blobs" (list of blobs associated with the section)
 
-var librarySource; // promise wrapping the HTML source of the library
 var libraryReopenAllowed = false; // Whether the "Reopen book" button in the library is enabled
+var librarySource; // Promise wrapping the HTML source of the library
+var librarySourceId; // Unique ID of librarySource; will change if librarySource does
+var libraryIdToBlobsMap = {}; // Map from library UIDs to object as in sectionIdToBlobsMap
 
 // basalt.html elements
 
@@ -38,6 +44,11 @@ var navigation = document.getElementById("navtemplate").content.firstElementChil
 //   Helpers   //
 /////////////////
 
+// Returns an ID not used previously within this run of the basalt.js script (barring overflow)
+function getUniqueId() {
+    return Atomics.add(nextUniqueId, 0, 1);
+}
+
 // sheet: CSSStyleSheet element
 // Returns string representation of sheet
 function serializeStylesheet(sheet) {
@@ -45,15 +56,17 @@ function serializeStylesheet(sheet) {
 }
 
 // doc: document in which to create the link
+// docId: UID associated with doc
+// map: sectionIdToBlobsMap or libraryIdToBlobsMap
 // sheet: string representation of sheet to place at the link
 // Returns a link element pointing at sheet
-function stylesheetToBlobLink(doc, sheet) {
+function stylesheetToBlobLink(doc, docId, map, sheet) {
     let sheetBlob = new Blob([sheet], {
         type: "text/css",
     });
     let sheetUrl = URL.createObjectURL(sheetBlob);
 
-    // Currently the blobs never get released until page close, so memory leaks. Fix this.
+    map[docId].blobs.push(sheetUrl);
 
     let link = doc.createElement("link");
     link.setAttribute("rel", "stylesheet");
@@ -61,12 +74,25 @@ function stylesheetToBlobLink(doc, sheet) {
     return link;
 }
 
+// map: sectionIdToBlobsMap or libraryIdToBlobsMap
+function revokeFinishedBlobs(map) {
+    for (let uid in map) {
+        if (map[uid].doneDisplaying) {
+            for (let blobUrl of map[uid].blobs) {
+                URL.revokeObjectURL(blobUrl);
+            }
+            delete map[uid];
+        }
+    }
+}
+
 ////////////////////////
 //   Render Library   //
 ////////////////////////
 
 // doc: HTML doc representing library.html, to have styles inserted
-function injectLibraryStylesheet(doc) {
+// docId: UID associated with doc
+function injectLibraryStylesheet(doc, docId) {
     let style = new CSSStyleSheet();
 
     style.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
@@ -79,19 +105,21 @@ function injectLibraryStylesheet(doc) {
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
 
-    let styleLink = stylesheetToBlobLink(doc, serializeStylesheet(style));
+    let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style));
     doc.head.append(styleLink);
 }
 
 // doc: HTML doc representing library.html, to be prepared for display
+// docId: UID associated with doc
 // reopenAllowed: bool, if false then the "Reopen book" button gets disabled
 // Returns string representation of doc, now customized for display for the user
-function prepareLibraryDocForDisplay(doc, reopenAllowed) {
+function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
+
     if (!reopenAllowed) {
         doc.getElementById("reopenbook").setAttribute("disabled", "disabled");
     }
 
-    injectLibraryStylesheet(doc);
+    injectLibraryStylesheet(doc, docId);
 
     return new XMLSerializer().serializeToString(doc);
 }
@@ -99,15 +127,25 @@ function prepareLibraryDocForDisplay(doc, reopenAllowed) {
 // reopenAllowed: bool, if false then the "Reopen book" button gets disabled
 // Returns promise wrapping the output library HTML
 function generateLibrary(reopenAllowed) {
-    return new Promise((resolve, _reject) => {
-        let libraryRequest = new XMLHttpRequest();
-        libraryRequest.open("GET", "library.html");
-        libraryRequest.responseType = "document";
-        libraryRequest.onload = _ => {
-            resolve(prepareLibraryDocForDisplay(libraryRequest.responseXML, reopenAllowed));
-        };
-        libraryRequest.send();
-    });
+    if (librarySourceId) {
+        libraryIdToBlobsMap[librarySourceId].doneDisplaying = true;
+    }
+
+    let libraryId = getUniqueId();
+    libraryIdToBlobsMap[libraryId] = {doneDisplaying: false, blobs: []};
+
+    return {
+        id: libraryId,
+        source: new Promise((resolve, _reject) => {
+            let libraryRequest = new XMLHttpRequest();
+            libraryRequest.open("GET", "library.html");
+            libraryRequest.responseType = "document";
+            libraryRequest.onload = _ => {
+                resolve(prepareLibraryDocForDisplay(libraryRequest.responseXML, libraryId, reopenAllowed));
+            };
+            libraryRequest.send();
+        })
+    }
 }
 
 /////////////////////
@@ -402,13 +440,14 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 }
 
 // doc: XHTML doc whose head's style elements and links should be modified
+// docId: UID associated with doc
 // docSheets: array of stylesheets in doc
 // htmlClassName: class name to reaim head-element-targeted styles towards
 // bodyClassName: class name to reaim body-element-targeted styles towards
-async function reaimStylesheets(doc, docSheets, htmlClassName, bodyClassName) {
+async function reaimStylesheets(doc, docId, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
         let reaimedSheetString = await reaimStylesheet(serializeStylesheet(sheetInfo.sheet), htmlClassName, bodyClassName);
-        let reaimedSheetNode = stylesheetToBlobLink(doc, reaimedSheetString);
+        let reaimedSheetNode = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, reaimedSheetString);
         let reaimedSheet = new CSSStyleSheet();
         reaimedSheet.replaceSync(reaimedSheetString);
 
@@ -472,6 +511,7 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
 }
 
 // doc: XHTML doc into which Basalt's stylesheets will be injected
+// docId: UID associated with doc
 // writingMode: writing mode in which doc is set to be displayed
 // ignoreStylesClassName: class name indicating that its elements should be unaffected by all doc styles
 // headerIdName: ID name for header
@@ -480,14 +520,14 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
 // htmlClassName: class name for the html element of the opened book section
-function injectBookSectionStylesheets(doc, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
+function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
     lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
-    let lowPriorityStyleLink = stylesheetToBlobLink(doc, serializeStylesheet(lowPriorityStyle));
+    let lowPriorityStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(lowPriorityStyle));
     doc.head.prepend(lowPriorityStyleLink);
 
     // High-priority style (will override the book's stylesheets)
@@ -512,7 +552,7 @@ function injectBookSectionStylesheets(doc, writingMode, ignoreStylesClassName, h
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
-    let basaltStyleLink = stylesheetToBlobLink(doc, serializeStylesheet(basaltStyle));
+    let basaltStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(basaltStyle));
     doc.head.prepend(basaltStyleLink);
 }
 
@@ -531,6 +571,9 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 
     let stylesheets = getStylesheets(parsedXhtml);
 
+    let sectionId = getUniqueId();
+    sectionIdToBlobsMap[sectionId] = {doneDisplaying: false, blobs: []};
+
     let ignoreStylesClassName = getUniqueClassName(parsedXhtml, "basaltignorestyles");
     let headerIdName = getUniqueIdName(parsedXhtml, "basaltheader");
     let footerIdName = getUniqueIdName(parsedXhtml, "basaltfooter");
@@ -542,20 +585,24 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 
     refactorHtmlAndBody(parsedXhtml, htmlClassName, bodyClassName);
     injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
-    await reaimStylesheets(parsedXhtml, await stylesheets, htmlClassName, bodyClassName);
+    await reaimStylesheets(parsedXhtml, sectionId, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
-    injectBookSectionStylesheets(parsedXhtml, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
+    injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
     injectUiScript(parsedXhtml);
 
-    return new XMLSerializer().serializeToString(parsedXhtml);
+    return {
+        id: sectionId,
+        source: new XMLSerializer().serializeToString(parsedXhtml),
+    };
 }
 
 ////////////////////
 //   Navigation   //
 ////////////////////
 
-async function openLibrary() {
+async function displayLibrary() {
     bookIframe.setAttribute("srcdoc", await librarySource);
+    revokeFinishedBlobs(libraryIdToBlobsMap);
 }
 
 // index: numerical index into spine
@@ -574,8 +621,11 @@ async function displaySection(index, fragment) {
             currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
             section.render(book.load.bind(book)).then(async xhtml => {
                 let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
-                currentSectionSource = xhtmlToDisplay;
-                bookIframe.setAttribute("srcdoc", xhtmlToDisplay);
+                currentSectionSource = xhtmlToDisplay.source;
+                currentSectionSourceId = xhtmlToDisplay.id;
+                bookIframe.setAttribute("srcdoc", xhtmlToDisplay.source);
+                revokeFinishedBlobs(sectionIdToBlobsMap);
+                sectionIdToBlobsMap[xhtmlToDisplay.id].doneDisplaying = true;
             });
         }
     }
@@ -586,15 +636,16 @@ async function displaySection(index, fragment) {
 
 // file: arrayBuffer containing an EPUB file
 async function openBook(file) {
+    if (book) {
+        book.destroy();
+    }
     book = ePub(file);
 
-    book.loaded.metadata.then(_ => {
-        document.title = `Basalt eBook Reader: ${book.packaging.metadata.title}`;
+    book.loaded.metadata.then(metadata => {
+        document.title = `Basalt eBook Reader: ${metadata.title}`;
     });
 
-    let tocSet = book.loaded.navigation.then(_ => {
-        setTocDropdown(book.navigation.toc);
-    });
+    let tocSet = book.loaded.navigation.then(navigation => setTocDropdown(navigation.toc));
 
     await book.opened;
     let firstLinearSectionIndex = 0;
@@ -617,14 +668,16 @@ async function openBook(file) {
 
     if (!libraryReopenAllowed) {
         libraryReopenAllowed = true;
-        librarySource = generateLibrary(true);
+        let newLibrary = generateLibrary(true);
+        librarySource = newLibrary.source;
+        librarySourceId = newLibrary.id;
     }
 }
 
 function closeBook() {
     document.title = "Basalt eBook Reader: Library";
     currentBookId = undefined;
-    openLibrary();
+    displayLibrary();
 }
 
 function resumeBook() {
@@ -680,5 +733,9 @@ window.addEventListener("message", basaltMessage => {
     }
 });
 
-librarySource = generateLibrary(false);
-openLibrary();
+{
+    let library = generateLibrary(false);
+    librarySource = library.source;
+    librarySourceId = library.id;
+    displayLibrary();
+}
