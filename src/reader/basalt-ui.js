@@ -36,7 +36,11 @@ function rewriteLinks() {
                         event.preventDefault();
                     });
                 }
-                link.setAttribute("href", "#");
+                let virtualBookUrl = `reader/book${parsedHref.uri}`; // Replace with something containing the filename explicitly
+                if (parsedHref.fragment) {
+                    virtualBookUrl += parsedHref.fragment;
+                }
+                link.setAttribute("href", browser.runtime.getURL(virtualBookUrl));
             } else {
                 link.addEventListener("click", event => {
                     parent.window.open(encodeURI(linkHref), "_blank");

@@ -2,7 +2,6 @@
 
 Short-term (before release):
 
-- Improve link-rewriting to indicate internal destination on rewritten links
 - Add style editor.
     - Allow users to edit reader styles, both on a global basis and on a per-book basis, and including the option to override book styles or not for each style the users define.
     - Also allow library style to be edited separately from book style.
