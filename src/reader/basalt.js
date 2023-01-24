@@ -244,7 +244,7 @@ async function setTocDropdown(toc) {
 }
 
 // doc: XHTML doc to retrieve stylesheets from
-// Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from and "sheet" to a CSSStyleSheet representation of said stylesheet
+// Returns array of objects, each mapping "node" to the node a stylesheet was retrieved from, "sheetText" to a text representation of the sheet, and "hydratedSheet" to an initially-null CSSStyleSheet representation of said stylesheet
 async function getStylesheets(doc) {
     let sheets = [];
 
@@ -252,9 +252,10 @@ async function getStylesheets(doc) {
 
     let sheetText;
     for (let node of stylesheetBearingNodes) {
-        if (node.tagName == "style") {
+        if (node.tagName === "style") {
             sheetText = node.innerHTML;
-        } else if (node.tagName == "link") {
+        } else if (node.tagName === "link") {
+            // Update to make sure the link is internal and toss an error if not
             sheetText = await fetch(node.href).then(async content => await content.text());
         } else {
             alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)");
@@ -379,6 +380,38 @@ function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName
     Array.from(doc.querySelectorAll(`#${footerIdName} select [value='${sectionToTocMap[currentSection.index].footer}']`)).at(-1).setAttribute("selected", "selected");
 }
 
+// sheet: string representation of stylesheet
+// Returns sheet, but with its import statements turned into inline CSS
+async function inlineStylesheetImports(sheet) {
+    // LightningCSS might be able to do this better once its visitor API is working, I don't know.
+    let updatedSheet = sheet;
+
+    for (let match of sheet.matchAll(/@import\s*("(?<dqurl>.*?)"|'(?<squrl>.*?)'|url\s*\(\s*("(?<fdqurl>.*?)"|'(?<fsqurl>.*?)')\s*\))\s*(?<layer>layer\s*(\(\s*("(?<dqlayername>.*?)"|'(?<sqlayername>.*?)')\s*\))?)?\s*(?<queries>.*?)\s*;/g)) {
+        let fullMatch = match[0];
+        let url = match.groups.dqurl || match.groups.squrl || match.groups.fdqurl || match.groups.fsqurl;
+        let layer = match.groups.layer;
+        let layerName = match.groups.dqlayername || match.groups.sqlayername || "";
+        let queries = match.groups.queries;
+
+        // Update to make sure the import path is internal and toss an error if not
+        let sheetAtUrl = await fetch(url).then(async content => await content.text());
+        let sheetAtUrlAfterRecursion = await inlineStylesheetImports(sheetAtUrl);
+
+        let matchReplacement = sheetAtUrlAfterRecursion;
+        //Layer and queries are currently broken by epub.js's url-replacement
+        if (queries) {
+            matchReplacement = `@media ${queries} {${matchReplacement}}`;
+        }
+        if (layer) {
+            matchReplacement = `@layer ${layerName} {${matchReplacement}}`;
+        }
+
+        updatedSheet = updatedSheet.replace(fullMatch, matchReplacement);
+    }
+
+    return updatedSheet;
+}
+
 // sheet: string representation of CSS stylesheet
 // htmlClassName: class name to replace html element selectors with
 // bodyClassName: class name to replace body element selectors with
@@ -392,7 +425,9 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 
     let updatedSheet = "";
     for (let style of styles) {
-        let [selector, declarations] = style.split("{");
+        let splitStyle = style.split("{");
+        let selector = splitStyle[0];
+        let declarations = splitStyle.slice(1).join("{");
 
         let selectorWithHtmlReplaced = selector.replaceAll(/(?<![\w\.#[=:_-])html(?![\w_-])/g, "." + htmlClassName);
         let selectorWithHtmlAndBodyReplaced = selectorWithHtmlReplaced.replaceAll(/(?<![\w\.#[=:_-])body(?![\w_-])/g, "." + bodyClassName);
@@ -450,7 +485,12 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
 // bodyClassName: class name to reaim body-element-targeted styles towards
 async function reaimAndHydrateStylesheets(doc, docId, docSheets, htmlClassName, bodyClassName) {
     for (let sheetInfo of docSheets) {
-        let firstPassReaimedSheetText = await reaimStylesheet(sheetInfo.sheetText, htmlClassName, bodyClassName);
+        // Inline imports so they get properly reaimed too
+        let sheetWithImportsInlined = await inlineStylesheetImports(sheetInfo.sheetText);
+        // (Possibly replace this with recursive reaiming of imports, instead? Plausibly more elegant / less error-prone)
+
+        // Reaim and hydrate
+        let firstPassReaimedSheetText = await reaimStylesheet(sheetWithImportsInlined, htmlClassName, bodyClassName);
         let hydratedSheet = new CSSStyleSheet();
         hydratedSheet.replaceSync(firstPassReaimedSheetText);
         // Doing two passes avoids redundant console-spam about any invalid styles that remain
@@ -463,7 +503,6 @@ async function reaimAndHydrateStylesheets(doc, docId, docSheets, htmlClassName, 
         sheetInfo.sheetText = secondPassReaimedSheetText;
         sheetInfo.hydratedSheet = hydratedSheet;
     }
-    // It'd be nice to handle @import-derived stylesheets, too. However, they're unhandled by epub.js, so that'll be hard absent a functioning VFS. Doable via sufficiently smart relative-path-tracking maybe?
 }
 
 // element: Element to get a list of applicable rules for
@@ -618,6 +657,7 @@ async function displayLibrary() {
 // index: numerical index into spine
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
+    // There exist race conditions here. (currentDirectory, for instance.) Figure out a more elegant solution.
     let newSection = false;
     if ((!currentSection) || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
         let section = book.spine.get(index);
@@ -628,7 +668,7 @@ async function displaySection(index, fragment) {
             }
             window.scrollTo(0, 0);
             currentSection = section;
-            currentDirectory = section.canonical.split("/").slice(undefined, -1).join("/") + "/";
+            currentDirectory = section.canonical.split("/").slice(0, -1).join("/") + "/";
             section.render(book.load.bind(book)).then(async xhtml => {
                 let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
                 currentSectionSource = xhtmlToDisplay.source;
@@ -726,7 +766,7 @@ async function prevSection() {
 
 window.addEventListener("message", basaltMessage => {
     // This leads to potential collisions if someone else is passing messages of coincidentally-identical structure; can it be done better?
-    if (basaltMessage.origin === browser.runtime.getURL("").slice(undefined, -1)) {
+    if (basaltMessage.origin === browser.runtime.getURL("").slice(0, -1)) {
         if (basaltMessage.data.messageType === "BasaltOpenBook") {
             openBook(basaltMessage.data.book);
         } else if (basaltMessage.data.messageType === "BasaltResumeBook") {

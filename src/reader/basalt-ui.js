@@ -2,13 +2,13 @@
 
 function enableNavigation() {
     let navClassName = document.querySelector("nav").classList[0];
-    document.querySelectorAll("." + navClassName + " input[value=Previous]").forEach(button => {
+    document.querySelectorAll(`.${navClassName} input[value=Previous]`).forEach(button => {
         button.addEventListener("click", _ => parent.postMessage({messageType: "BasaltPrevSection"}, parent.document.documentURI));
     });
-    document.querySelectorAll("." + navClassName + " input[value=Next]").forEach(button => {
+    document.querySelectorAll(`.${navClassName} input[value=Next]`).forEach(button => {
         button.addEventListener("click", _ => parent.postMessage({messageType: "BasaltNextSection"}, parent.document.documentURI));
     });
-    document.querySelectorAll("." + navClassName + " select").forEach(select => {
+    document.querySelectorAll(`.${navClassName} select`).forEach(select => {
         select.addEventListener("change", event => {
             let tocTarget = JSON.parse(event.target.value);
             parent.postMessage({messageType: "BasaltDisplaySection", index: tocTarget.index, fragment: tocTarget.fragment}, parent.document.documentURI);
@@ -32,7 +32,7 @@ function rewriteLinks() {
                     });
                 } else {
                     link.addEventListener("click", event => {
-                        alert("Invalid link " + linkHref + " (" + parsedHref.uri + ") pointing to nonexistent section in EPUB.");
+                        alert(`Invalid link ${linkHref } (${parsedHref.uri}) pointing to nonexistent section in EPUB.`);
                         event.preventDefault();
                     });
                 }
