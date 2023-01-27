@@ -6,6 +6,11 @@
         <link rel="stylesheet" href="basalt.css">
         <script src="libraries/jszip/jszip.min.js"></script>
         <script src="libraries/epub.js/epub.min.js"></script>
+        <template id="styleeditorcontainertemplate">
+            <section>
+                <iframe></iframe>
+            </section>
+        </template>
         <template id="navtemplate">
             <nav>
                 <input type="button" value="Previous">
@@ -16,8 +21,8 @@
         <template id="closebuttontemplate">
             <input type="button" value="Close book">
         </template>
-        <template id="styleeditortemplate">
-            <input type="button" value="Style editor">
+        <template id="styleeditorbuttontemplate">
+            <input type="button" value="Open style editor">
         </template>
         <template id="returntotoptemplate">
             <input type="button" value="Return to top">

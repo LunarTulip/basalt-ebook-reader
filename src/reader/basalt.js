@@ -24,6 +24,7 @@ var nextUniqueId = new Uint32Array(new ArrayBuffer(4)); // For manipulation via 
 var currentDirectory; // Path to the directory housing currentSection
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
 var currentSectionSource; // XHTML source of the last opened book section
+var currentSectionStyleEditorId; // id of the style editor within currentSection, if applicable
 var currentSectionSourceId; // Unique ID of currentSectionSource; will change if currentSectionSource does
 var sectionIdToBlobsMap = {}; // Map from section UIDs to object with two properties, "doneDisplaying" (true if the section has been or won't ever be displayed) and "blobs" (list of blobs associated with the section)
 
@@ -31,6 +32,8 @@ var libraryReopenAllowed = false; // Whether the "Reopen book" button in the lib
 var librarySource; // Promise wrapping the HTML source of the library
 var librarySourceId; // Unique ID of librarySource; will change if librarySource does
 var libraryIdToBlobsMap = {}; // Map from library UIDs to object as in sectionIdToBlobsMap
+
+var styleEditorOpen = false; // Whether the style editor is open for display
 
 // basalt.html elements
 
@@ -102,15 +105,16 @@ function injectLibraryStylesheet(doc, docId) {
     let style = new CSSStyleSheet();
 
     style.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-    style.insertRule("header {background: slateblue; padding: 10px;}");
-    style.insertRule("footer {background: slateblue; padding: 10px; margin-top: auto;}");
-    style.insertRule("main {display: flex; flex-direction: row; flex-wrap: wrap;}");
-    style.insertRule("main section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
-    style.insertRule("main button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
+    style.insertRule("header, footer {background: slateblue; padding: 10px; z-index: 1;}");
+    style.insertRule("main {flex: 1; display: flex; flex-direction: row;}");
+    style.insertRule("#library {flex: 1; display: flex; flex-direction: row; flex-wrap: wrap;}");
+    style.insertRule("#library section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
+    style.insertRule("#library button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
+    style.insertRule("#styleeditor iframe {border: none; border-left: 0.2em solid slateblue; width: min(20em, 45vw); height: 100%; max-height:100vh; position: sticky; top: 0;}");
     style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
-    style.insertRule("#styleeditor {float: right;}");
+    style.insertRule("#styleeditorbutton {float: right;}");
 
     let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style, true));
     doc.head.append(styleLink);
@@ -119,9 +123,8 @@ function injectLibraryStylesheet(doc, docId) {
 // doc: HTML doc representing library.html, to be prepared for display
 // docId: UID associated with doc
 // reopenAllowed: bool, if false then the "Reopen book" button gets disabled
-// Returns string representation of doc, now customized for display for the user
+// Returns string representation of doc, now customized for display to the user
 function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
-
     if (!reopenAllowed) {
         doc.getElementById("reopenbook").setAttribute("disabled", "disabled");
     }
@@ -292,13 +295,19 @@ function getUniqueIdName(doc, baseName) {
 }
 
 // doc: XHTML doc whose html and body elements should be refactored into divs
+// sectionIdName: ID name for the section element containing the html div
 // htmlClassName: class name, unique within doc, to place on the html div
 // bodyClassName: class name, unique within doc, to place on the body div
-function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
-    let mainHtml = doc.createElement("main");
+function refactorHtmlAndBody(doc, sectionIdName, htmlClassName, bodyClassName) {
+    let main = doc.createElement("main");
+
+    let mainSection = doc.createElement("section");
+    mainSection.id = sectionIdName;
+
+    let mainHtml = doc.createElement("div");
     mainHtml.classList.add(htmlClassName);
 
-    let mainBody = doc.createElement("section");
+    let mainBody = doc.createElement("div");
     mainBody.classList.add(bodyClassName);
 
     if (doc.documentElement.id) {
@@ -332,7 +341,9 @@ function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
         mainBody.append(doc.body.firstChild);
     }
 
-    doc.body.append(mainHtml);
+    mainSection.append(mainHtml);
+    main.append(mainSection);
+    doc.body.append(main);
 }
 
 // doc: XHTML doc into whose body the navigation header and footer should be injected
@@ -348,7 +359,7 @@ function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName
     closeBookButton.id = closeButtonIdName;
     closeBookButton.classList.add(ignoreStylesClassName);
 
-    let styleEditorButton = doc.importNode(document.getElementById("styleeditortemplate").content.firstElementChild);
+    let styleEditorButton = doc.importNode(document.getElementById("styleeditorbuttontemplate").content.firstElementChild);
     styleEditorButton.id = styleEditorButtonIdName;
     styleEditorButton.classList.add(ignoreStylesClassName);
 
@@ -370,8 +381,8 @@ function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName
     header.id = headerIdName;
     header.classList.add(ignoreStylesClassName);
     header.append(closeBookButton);
-    header.append(docNav.cloneNode(true));
     header.append(styleEditorButton);
+    header.append(docNav.cloneNode(true));
 
     let footer = doc.createElement("footer");
     footer.id = footerIdName;
@@ -577,11 +588,12 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
 // htmlClassName: class name for the html element of the opened book section
-function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
+// styleEditorIdName: ID name for the style editor section
+function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, sectionIdName, htmlClassName, styleEditorIdName) {
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
-    lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; background: darkslateblue; color: gold;}`);
+    lowPriorityStyle.insertRule(`.${htmlClassName} {all: revert; min-height:100%; min-width:100%; background: darkslateblue; color: gold;}`);
     lowPriorityStyle.insertRule("a {color: orangered;}");
 
     let lowPriorityStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(lowPriorityStyle, true));
@@ -597,14 +609,16 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
 
     if (writingMode === "horizontal-tb") {
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-top: auto; z-index: 2147483647;}`);
+        basaltStyle.insertRule(`#${sectionIdName} {flex: 1; display: flex; max-width: 100%;}`)
     } else {
         basaltStyle.insertRule(`html {writing-mode: ${writingMode};}`);
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 100vw;}");
-        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-right: auto; z-index: 2147483647;}`);
+        basaltStyle.insertRule(`#${sectionIdName} {flex: 1; display: flex; max-height:100%;}`)
     }
 
-    basaltStyle.insertRule(`#${headerIdName} {background: slateblue; padding: 10px; z-index: 2147483647;}`);
+    basaltStyle.insertRule(`#${headerIdName}, #${footerIdName} {background: slateblue; padding: 10px; z-index: 2147483647;}`);
+    basaltStyle.insertRule("main {flex: 1; display: flex; flex-direction: row;}");
+    basaltStyle.insertRule(`#${styleEditorIdName} iframe {border: none; border-left: 0.2em solid slateblue; width: min(20em, 45vw); height: 100%; max-height:100vh; position: sticky; top: 0;}`);
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
     basaltStyle.insertRule(`#${styleEditorButtonIdName} {float: right;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
@@ -635,23 +649,53 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     let headerIdName = getUniqueIdName(parsedXhtml, "basaltheader");
     let footerIdName = getUniqueIdName(parsedXhtml, "basaltfooter");
     let closeButtonIdName = getUniqueIdName(parsedXhtml, "basaltclosebook");
-    let styleEditorButtonIdName = getUniqueIdName(parsedXhtml, "basaltstyleeditor");
+    let styleEditorButtonIdName = getUniqueIdName(parsedXhtml, "basaltstyleeditorbutton");
     let returnToTopButtonIdName = getUniqueIdName(parsedXhtml, "basaltreturntotop");
     let navigationClassName = getUniqueClassName(parsedXhtml, "basaltnav");
+    let sectionIdName = getUniqueIdName(parsedXhtml, "basaltsection");
     let htmlClassName = getUniqueClassName(parsedXhtml, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(parsedXhtml, "basaltmainbody");
+    let styleEditorIdName = getUniqueIdName(parsedXhtml, "basaltstyleeditor");
 
-    refactorHtmlAndBody(parsedXhtml, htmlClassName, bodyClassName);
+    refactorHtmlAndBody(parsedXhtml, sectionIdName, htmlClassName, bodyClassName);
     injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName);
     await reaimAndHydrateStylesheets(parsedXhtml, sectionId, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
-    injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
+    injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, sectionIdName, htmlClassName, styleEditorIdName);
     injectUiScript(parsedXhtml);
 
     return {
         id: sectionId,
+        styleEditorId: styleEditorIdName,
         source: new XMLSerializer().serializeToString(parsedXhtml),
     };
+}
+
+/////////////////////////////
+//   Render Style Editor   //
+/////////////////////////////
+
+// doc: HTML doc representing style-editor.html, to be prepared for display
+// type: string, "library" or "section"
+// bookId: string | undefined, unique ID of book if type is "section"
+// Returns string representation of doc, now customized for display to the user
+function prepareStyleEditorDocForDisplay(doc, type, bookId) {
+    return new XMLSerializer().serializeToString(doc);
+}
+
+// type: string, "library" or "section"
+// bookId: string | undefined, unique ID of book if type is "section"
+// Returns promise wrapping the output style editor HTML
+function generateStyleEditor(type, bookId) {
+    return new Promise((resolve, _reject) => {
+        let styleEditorRequest = new XMLHttpRequest();
+        styleEditorRequest.open("GET", "style-editor.html");
+        styleEditorRequest.responseType = "document";
+        styleEditorRequest.onload = _ => {
+            resolve(prepareStyleEditorDocForDisplay(styleEditorRequest.responseXML, type, bookId));
+        };
+        styleEditorRequest.send();
+    })
 }
 
 ////////////////////
@@ -666,7 +710,7 @@ async function displayLibrary() {
 // index: numerical index into spine
 // fragment: string | undefined, fragment to jump to in section if applicable
 async function displaySection(index, fragment) {
-    // There exist race conditions here. (currentDirectory, for instance.) Figure out a more elegant solution.
+    // There exist race conditions here. (currentDirectory, for instance, might be changed again here before being used in basalt-ui.js.) Figure out a more elegant solution.
     let newSection = false;
     if ((!currentSection) || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
         let section = book.spine.get(index);
@@ -681,6 +725,7 @@ async function displaySection(index, fragment) {
             section.render(book.load.bind(book)).then(async xhtml => {
                 let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
                 currentSectionSource = xhtmlToDisplay.source;
+                currentSectionStyleEditorId = xhtmlToDisplay.styleEditorId;
                 currentSectionSourceId = xhtmlToDisplay.id;
                 bookIframe.setAttribute("srcdoc", xhtmlToDisplay.source);
                 revokeFinishedBlobs(sectionIdToBlobsMap);
@@ -690,6 +735,40 @@ async function displaySection(index, fragment) {
     }
     if (fragment && !newSection) {
         bookIframe.contentWindow.location.hash = fragment;
+    }
+}
+
+// button: the ID of the style editor toggle button
+// type: string, "library" or "section" depending on whether the open command was sent from the library or from an open book section
+async function toggleStyleEditor(buttonId, type) {
+    let doc = bookIframe.contentWindow.document;
+
+    let editorId;
+    if (type === "library") {
+        editorId = "styleeditor";
+    } else if (type === "section") {
+        editorId = currentSectionStyleEditorId;
+    } else {
+        alert(`Error: received style editor toggle command of type '${type}'. (This should never happen; please report if it does.)`);
+        throw "BasaltInternalError";
+    }
+    let button = doc.getElementById(buttonId);
+
+    if (styleEditorOpen) {
+        doc.getElementById(editorId).remove();
+        button.setAttribute("value", "Open style editor");
+        styleEditorOpen = false;
+    } else {
+        let editor = doc.createElement("section");
+        editor.id = editorId;
+
+        let editorFrame = doc.createElement("iframe");
+        editor.append(editorFrame);
+        editorFrame.setAttribute("srcdoc", await generateStyleEditor(type, currentBookId));
+
+        doc.getElementsByTagName("main")[0].append(editor);
+        button.setAttribute("value", "Close style editor");
+        styleEditorOpen = true;
     }
 }
 
@@ -775,19 +854,22 @@ async function prevSection() {
 
 window.addEventListener("message", basaltMessage => {
     // This leads to potential collisions if someone else is passing messages of coincidentally-identical structure; can it be done better?
+    // Also, there be race conditions aplenty here. Figure out a way to mitigate those, ideally.
     if (basaltMessage.origin === browser.runtime.getURL("").slice(0, -1)) {
-        if (basaltMessage.data.messageType === "BasaltOpenBook") {
-            openBook(basaltMessage.data.book);
-        } else if (basaltMessage.data.messageType === "BasaltResumeBook") {
-            resumeBook();
-        } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
-            closeBook();
+        if (basaltMessage.data.messageType === "BasaltDisplaySection") {
+            displaySection(basaltMessage.data.index, basaltMessage.data.fragment);
         } else if (basaltMessage.data.messageType === "BasaltNextSection") {
             nextSection();
         } else if (basaltMessage.data.messageType === "BasaltPrevSection") {
             prevSection();
-        } else if (basaltMessage.data.messageType === "BasaltDisplaySection") {
-            displaySection(basaltMessage.data.index, basaltMessage.data.fragment);
+        } else if (basaltMessage.data.messageType === "BasaltOpenBook") {
+            openBook(basaltMessage.data.book);
+        } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
+            closeBook();
+        } else if (basaltMessage.data.messageType === "BasaltResumeBook") {
+            resumeBook();
+        } else if (basaltMessage.data.messageType === "BasaltToggleStyleEditor") {
+            toggleStyleEditor(basaltMessage.data.buttonId, basaltMessage.data.type);
         }
     }
 });

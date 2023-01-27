@@ -2,6 +2,10 @@
 
 function enableNavigation() {
     let navClassName = document.querySelector("nav").classList[0];
+    let closeBookButton = document.querySelector('header input[value="Close book"]');
+    let styleEditorButton = document.querySelector('header input[value="Open style editor"]');
+    let returnToTopButton = document.querySelector('footer input[value="Return to top"]');
+
     document.querySelectorAll(`.${navClassName} input[value=Previous]`).forEach(button => {
         button.addEventListener("click", _ => parent.postMessage({messageType: "BasaltPrevSection"}, parent.document.documentURI));
     });
@@ -14,8 +18,9 @@ function enableNavigation() {
             parent.postMessage({messageType: "BasaltDisplaySection", index: tocTarget.index, fragment: tocTarget.fragment}, parent.document.documentURI);
         });
     });
-    document.querySelector('header input[value="Close book"]').addEventListener("click", _ => parent.postMessage({messageType: "BasaltCloseBook"}, parent.document.documentURI));
-    document.querySelector('footer input[value="Return to top"]').addEventListener("click", _ => window.scrollTo(0, 0));
+    closeBookButton.addEventListener("click", _ => parent.postMessage({messageType: "BasaltCloseBook"}, parent.document.documentURI));
+    styleEditorButton.addEventListener("click", _ => parent.postMessage({messageType: "BasaltToggleStyleEditor", buttonId: styleEditorButton.id, type: "section"}, parent.document.documentURI));
+    returnToTopButton.addEventListener("click", _ => window.scrollTo(0, 0));
 }
 
 function rewriteLinks() {
