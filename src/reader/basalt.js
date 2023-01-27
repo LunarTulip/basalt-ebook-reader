@@ -8,7 +8,7 @@ let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js")
 
 // LightningCSS-relevant information
 
-let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // Promise such that, if fulfilled, LightningCSS is usable
+let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // Promise such that, if it's fulfilled, LightningCSS is usable
 let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Promise wrapping the Firefox major version, formatted in LightningCSS-comprehensible format
 
 // epub.js objects
@@ -110,6 +110,7 @@ function injectLibraryStylesheet(doc, docId) {
     style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
+    style.insertRule("#styleeditor {float: right;}");
 
     let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style, true));
     doc.head.append(styleLink);
@@ -339,12 +340,17 @@ function refactorHtmlAndBody(doc, htmlClassName, bodyClassName) {
 // headerIdName: ID name for header
 // footerIdName: ID name for footer
 // closeButtonIdName: ID name for "Close book" button in header
+// styleEditorButtonIdName: ID name for "Style editor" button in header
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
-function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName) {
+function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName) {
     let closeBookButton = doc.importNode(document.getElementById("closebuttontemplate").content.firstElementChild);
     closeBookButton.id = closeButtonIdName;
     closeBookButton.classList.add(ignoreStylesClassName);
+
+    let styleEditorButton = doc.importNode(document.getElementById("styleeditortemplate").content.firstElementChild);
+    styleEditorButton.id = styleEditorButtonIdName;
+    styleEditorButton.classList.add(ignoreStylesClassName);
 
     let returnToTopButton = doc.importNode(document.getElementById("returntotoptemplate").content.firstElementChild);
     returnToTopButton.id = returnToTopButtonIdName;
@@ -365,6 +371,7 @@ function injectNavigation(doc, ignoreStylesClassName, headerIdName, footerIdName
     header.classList.add(ignoreStylesClassName);
     header.append(closeBookButton);
     header.append(docNav.cloneNode(true));
+    header.append(styleEditorButton);
 
     let footer = doc.createElement("footer");
     footer.id = footerIdName;
@@ -398,7 +405,6 @@ async function inlineStylesheetImports(sheet) {
         let sheetAtUrlAfterRecursion = await inlineStylesheetImports(sheetAtUrl);
 
         let matchReplacement = sheetAtUrlAfterRecursion;
-        //Layer and queries are currently broken by epub.js's url-replacement
         if (queries) {
             matchReplacement = `@media ${queries} {${matchReplacement}}`;
         }
@@ -567,10 +573,11 @@ function getMainWritingMode(doc, docSheets, htmlClassName) {
 // headerIdName: ID name for header
 // footerIdName: ID name for footer
 // closeButtonIdName: ID name for "Close book" button in header
+// styleEditorButtonIdName: ID name for "Style editor" button in header
 // returnToTopButtonIdName: ID name for "Return to top" button in footer
 // navigationClassName: class name for the header and footer's nav elements
 // htmlClassName: class name for the html element of the opened book section
-function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
+function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName) {
     // Low-priority style (will be overridden by the book's stylesheets)
     let lowPriorityStyle = new CSSStyleSheet();
 
@@ -590,15 +597,16 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
 
     if (writingMode === "horizontal-tb") {
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-top: auto; z-index: 1000;}`);
+        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-top: auto; z-index: 2147483647;}`);
     } else {
         basaltStyle.insertRule(`html {writing-mode: ${writingMode};}`);
         basaltStyle.insertRule("body {margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 100vw;}");
-        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-right: auto; z-index: 1000;}`);
+        basaltStyle.insertRule(`#${footerIdName} {background: slateblue; padding: 10px; margin-right: auto; z-index: 2147483647;}`);
     }
 
-    basaltStyle.insertRule(`#${headerIdName} {background: slateblue; padding: 10px; z-index: 1000;}`);
+    basaltStyle.insertRule(`#${headerIdName} {background: slateblue; padding: 10px; z-index: 2147483647;}`);
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
+    basaltStyle.insertRule(`#${styleEditorButtonIdName} {float: right;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
     let basaltStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(basaltStyle, true));
@@ -627,16 +635,17 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     let headerIdName = getUniqueIdName(parsedXhtml, "basaltheader");
     let footerIdName = getUniqueIdName(parsedXhtml, "basaltfooter");
     let closeButtonIdName = getUniqueIdName(parsedXhtml, "basaltclosebook");
+    let styleEditorButtonIdName = getUniqueIdName(parsedXhtml, "basaltstyleeditor");
     let returnToTopButtonIdName = getUniqueIdName(parsedXhtml, "basaltreturntotop");
     let navigationClassName = getUniqueClassName(parsedXhtml, "basaltnav");
     let htmlClassName = getUniqueClassName(parsedXhtml, "basaltmainhtml");
     let bodyClassName = getUniqueClassName(parsedXhtml, "basaltmainbody");
 
     refactorHtmlAndBody(parsedXhtml, htmlClassName, bodyClassName);
-    injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName);
+    injectNavigation(parsedXhtml, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName);
     await reaimAndHydrateStylesheets(parsedXhtml, sectionId, await stylesheets, htmlClassName, bodyClassName);
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
-    injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
+    injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, htmlClassName, bodyClassName);
     injectUiScript(parsedXhtml);
 
     return {
