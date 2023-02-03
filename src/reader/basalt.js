@@ -124,12 +124,15 @@ function injectLibraryStylesheet(doc, docId) {
 // docId: UID associated with doc
 // reopenAllowed: bool, if false then the "Reopen book" button gets disabled
 // Returns string representation of doc, now customized for display to the user
-function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
+async function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
     if (!reopenAllowed) {
         doc.getElementById("reopenbook").setAttribute("disabled", "disabled");
     }
 
     injectLibraryStylesheet(doc, docId);
+    if (styleEditorOpen) {
+        injectStyleEditorIntoDocument(doc, await generateStyleEditor("library"), "styleeditor", "styleeditorbutton");
+    }
 
     return new XMLSerializer().serializeToString(doc);
 }
@@ -154,7 +157,7 @@ function generateLibrary(reopenAllowed) {
                 resolve(prepareLibraryDocForDisplay(libraryRequest.responseXML, libraryId, reopenAllowed));
             };
             libraryRequest.send();
-        })
+        }),
     }
 }
 
@@ -663,6 +666,9 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     let writingMode = getMainWritingMode(parsedXhtml, await stylesheets, htmlClassName);
     injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, sectionIdName, htmlClassName, styleEditorIdName);
     injectUiScript(parsedXhtml);
+    if (styleEditorOpen) {
+        injectStyleEditorIntoDocument(parsedXhtml, await generateStyleEditor("section", currentBookId), styleEditorIdName, styleEditorButtonIdName);
+    }
 
     return {
         id: sectionId,
@@ -696,6 +702,30 @@ function generateStyleEditor(type, bookId) {
         };
         styleEditorRequest.send();
     })
+}
+
+// doc: library or section document into which to inject the editor
+// editorSource: HTML source of editor to inject
+// editorId: ID name for editor
+// editorButtonId: ID of editor toggle button in doc
+function injectStyleEditorIntoDocument(doc, editorSource, editorId, editorButtonId) {
+    let editor = doc.createElement("section");
+    editor.id = editorId;
+
+    let editorFrame = doc.createElement("iframe");
+    editor.append(editorFrame);
+    editorFrame.setAttribute("srcdoc", editorSource);
+
+    doc.getElementsByTagName("main")[0].append(editor);
+    doc.getElementById(editorButtonId).setAttribute("value", "Close style editor");
+}
+
+// doc: library or section document form which to remove the editor
+// editorId: ID of editor in doc
+// editorButtonId: ID of editor toggle button in doc
+function removeStyleEditorFromDocument(doc, editorId, editorButtonId) {
+    doc.getElementById(editorId).remove();
+    doc.getElementById(editorButtonId).setAttribute("value", "Open style editor");
 }
 
 ////////////////////
@@ -738,37 +768,105 @@ async function displaySection(index, fragment) {
     }
 }
 
-// button: the ID of the style editor toggle button
-// type: string, "library" or "section" depending on whether the open command was sent from the library or from an open book section
-async function toggleStyleEditor(buttonId, type) {
-    let doc = bookIframe.contentWindow.document;
+// liveType: string, "library" or "section" depending on whether the toggle command was sent from the library or from an open book section
+async function openStyleEditor(liveType) {
+    // Open style editor in live doc
+    let liveTypeEditorSource = generateStyleEditor(liveType, currentBookId);
+    let liveDoc = bookIframe.contentWindow.document;
 
-    let editorId;
-    if (type === "library") {
-        editorId = "styleeditor";
-    } else if (type === "section") {
-        editorId = currentSectionStyleEditorId;
+    let liveEditorId, liveEditorButtonId, unliveType;
+    if (liveType === "library") {
+        liveEditorId = "styleeditor";
+        liveEditorButtonId = "styleeditorbutton";
+        unliveType = "section";
+    } else if (liveType === "section") {
+        liveEditorId = currentSectionStyleEditorId;
+        liveEditorButtonId = liveDoc.querySelector('header input[value$=" style editor"]').id;
+        unliveType = "library"
     } else {
-        alert(`Error: received style editor toggle command of type '${type}'. (This should never happen; please report if it does.)`);
+        alert(`Error: received style editor open command of type '${liveType}'. (This should never happen; please report if it does.)`);
         throw "BasaltInternalError";
     }
-    let button = doc.getElementById(buttonId);
 
-    if (styleEditorOpen) {
-        doc.getElementById(editorId).remove();
-        button.setAttribute("value", "Open style editor");
-        styleEditorOpen = false;
+    injectStyleEditorIntoDocument(liveDoc, await liveTypeEditorSource, liveEditorId, liveEditorButtonId);
+    styleEditorOpen = true;
+
+    // Open style editor in non-live docs
+    let parser = new DOMParser();
+
+    if (currentSection) {
+        let unliveTypeEditorSource = generateStyleEditor(unliveType, currentBookId);
+        let serializer = new XMLSerializer();
+
+        let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
+        let sectionEditorId = currentSectionStyleEditorId;
+        let sectionEditorButtonId = sectionDoc.querySelector('header input[value$=" style editor"]').id;
+
+        let libraryDoc = parser.parseFromString(await librarySource, "text/html");
+
+        if (liveType === "section") {
+            injectStyleEditorIntoDocument(sectionDoc, await liveTypeEditorSource, sectionEditorId, sectionEditorButtonId);
+            injectStyleEditorIntoDocument(libraryDoc, await unliveTypeEditorSource, "styleeditor", "styleeditorbutton");
+        } else {
+            injectStyleEditorIntoDocument(sectionDoc, await unliveTypeEditorSource, sectionEditorId, sectionEditorButtonId);
+            injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorSource, "styleeditor", "styleeditorbutton");
+        }
+
+        currentSectionSource = serializer.serializeToString(sectionDoc);
+        librarySource = new Promise((resolve, _reject) => resolve(serializer.serializeToString(libraryDoc)));
     } else {
-        let editor = doc.createElement("section");
-        editor.id = editorId;
+        // No book has been opened; therefore there's just the library, and liveType is "library"
+        let libraryDoc = parser.parseFromString(await librarySource, "text/html");
+        injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorSource, "styleeditor", "styleeditorbutton");
+        librarySource = new Promise((resolve, _reject) => resolve(new XMLSerializer().serializeToString(libraryDoc)));
+    }
+}
 
-        let editorFrame = doc.createElement("iframe");
-        editor.append(editorFrame);
-        editorFrame.setAttribute("srcdoc", await generateStyleEditor(type, currentBookId));
+// liveType: string, "library" or "section" depending on whether the toggle command was sent from the library or from an open book section
+async function closeStyleEditor(liveType) {
+    // Close style editor in live doc
+    let liveDoc = bookIframe.contentWindow.document;
 
-        doc.getElementsByTagName("main")[0].append(editor);
-        button.setAttribute("value", "Close style editor");
-        styleEditorOpen = true;
+    let liveEditorId, liveEditorButtonId, unliveType;
+    if (liveType === "library") {
+        liveEditorId = "styleeditor";
+        liveEditorButtonId = "styleeditorbutton";
+        unliveType = "section";
+    } else if (liveType === "section") {
+        liveEditorId = currentSectionStyleEditorId;
+        liveEditorButtonId = liveDoc.querySelector('header input[value$=" style editor"]').id;
+        unliveType = "library"
+    } else {
+        alert(`Error: received style editor close command of type '${liveType}'. (This should never happen; please report if it does.)`);
+        throw "BasaltInternalError";
+    }
+
+    removeStyleEditorFromDocument(liveDoc, liveEditorId, liveEditorButtonId);
+    styleEditorOpen = false;
+
+    // Close style editor in non-live docs
+    let parser = new DOMParser();
+    let serializer = new XMLSerializer();
+
+    if (currentSection) {
+        let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
+        let sectionEditorId = currentSectionStyleEditorId;
+        let sectionEditorButtonId = sectionDoc.querySelector('header input[value$=" style editor"]').id;
+        removeStyleEditorFromDocument(sectionDoc, sectionEditorId, sectionEditorButtonId);
+        currentSectionSource = serializer.serializeToString(sectionDoc);
+    }
+
+    let libraryDoc = parser.parseFromString(await librarySource, "text/html");
+    removeStyleEditorFromDocument(libraryDoc, "styleeditor", "styleeditorbutton");
+    librarySource = new Promise((resolve, _reject) => resolve(serializer.serializeToString(libraryDoc)));
+}
+
+// liveType: string, "library" or "section" depending on whether the toggle command was sent from the library or from an open book section
+async function toggleStyleEditor(liveType) {
+    if (styleEditorOpen) {
+        closeStyleEditor(liveType);
+    } else {
+        openStyleEditor(liveType);
     }
 }
 
@@ -869,7 +967,7 @@ window.addEventListener("message", basaltMessage => {
         } else if (basaltMessage.data.messageType === "BasaltResumeBook") {
             resumeBook();
         } else if (basaltMessage.data.messageType === "BasaltToggleStyleEditor") {
-            toggleStyleEditor(basaltMessage.data.buttonId, basaltMessage.data.type);
+            toggleStyleEditor(basaltMessage.data.type);
         }
     }
 });

@@ -3,7 +3,7 @@
 function enableNavigation() {
     let navClassName = document.querySelector("nav").classList[0];
     let closeBookButton = document.querySelector('header input[value="Close book"]');
-    let styleEditorButton = document.querySelector('header input[value="Open style editor"]');
+    let styleEditorButton = document.querySelector('header input[value$=" style editor"]');
     let returnToTopButton = document.querySelector('footer input[value="Return to top"]');
 
     document.querySelectorAll(`.${navClassName} input[value=Previous]`).forEach(button => {
@@ -19,7 +19,7 @@ function enableNavigation() {
         });
     });
     closeBookButton.addEventListener("click", _ => parent.postMessage({messageType: "BasaltCloseBook"}, parent.document.documentURI));
-    styleEditorButton.addEventListener("click", _ => parent.postMessage({messageType: "BasaltToggleStyleEditor", buttonId: styleEditorButton.id, type: "section"}, parent.document.documentURI));
+    styleEditorButton.addEventListener("click", _ => parent.postMessage({messageType: "BasaltToggleStyleEditor", type: "section"}, parent.document.documentURI));
     returnToTopButton.addEventListener("click", _ => window.scrollTo(0, 0));
 }
 

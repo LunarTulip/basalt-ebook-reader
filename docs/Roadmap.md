@@ -14,8 +14,8 @@ Short-term (before release):
 Medium-term (next steps after release):
 
 - Navigation V2
-    - Make the `Next` and `Previous` buttons respect spine items' `linear` attribute.
     - Replace current awkward table-of-contents view with a mapping from spine to TOC, with each entry in each as a clickable link.
+        - For each spine item, allow overriding default render settings, e.g. writing mode
     - Add a Fimfiction-style top bar allowing settings and navigation access from the middle of the page without requiring scrolling.
     - Add history-tracking and support for back/forward buttons, either soft or (ideally) hard.
     - Add support for a reload button, likely soft since a hard one would produce problems for people who *actually do* want to reload the extension tab.
@@ -26,6 +26,8 @@ Medium-term (next steps after release):
 - Style editor V2
     - Add preview plane to style editor to show the CSS it's currently generating
     - Allow moving style editor between left and right sides of page
+- Settings menu
+    - Cache options: number / max size of books to cache, and whether to open straight into the last cached book
 - Add support for non-Firefox browsers.
 - Support SVGs in the spine.
 - Add support for `scrolled-continuous` display, and an option to default to it.
@@ -39,11 +41,8 @@ Long-term (stretch goals, nice-to-have but outside of current scope):
 
 Nice-to-haves (may or may not be possible or practical, but belong in the prior lists if they are):
 
-- Support vertical text on a fully-reliable non-heuristic level, as well as arbitrary other text layouts.
 - Allow opening EPUBs straight into the extension-viewer, analogous to how Firefox currently handles PDFs.
     - [Open In Browser](https://github.com/Rob--W/open-in-browser) is an extension that exists and might serve as a source of guidance here, but it seems to work very awkwardly, not in a nice native way like the PDF handler.
-- In Library V2, offer quick-open buttons for previously-read books, without requiring filesystem navigation every time.
-    - If this is possible, add option to launch directly into one's last opened book rather than needing the library as an indirection-layer.
 - Add multiple layouts in the styles of different webfiction sites and/or readers, in addition to the default one.
 - Rename the reader to something more interesting / character-indicating.
 - Support more ebook formats (e.g. Kindle formats, CBZ/CBR, PDF, etc.)

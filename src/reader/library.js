@@ -26,7 +26,7 @@ reopenBookButton.addEventListener("click", _ => {
 });
 
 styleEditorButton.addEventListener("click", _ => {
-    parent.postMessage({messageType: "BasaltToggleStyleEditor", buttonId: "styleeditorbutton", type: "library"});
+    parent.postMessage({messageType: "BasaltToggleStyleEditor", type: "library"});
 });
 
 openFile.addEventListener("click", _ => {
