@@ -3,40 +3,112 @@
 <head>
     <meta charset="utf-8">
     <title>Basalt eBook Reader Style Editor</title>
-    <style>p {color: green;}</style>
+    <!-- <link rel="stylesheet" href="style-editor.css"> -->
+    <style>
+        /* Basic layout */
+
+        html {
+            scrollbar-width: thin;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            border-right: 0.2em solid slateblue;
+        }
+
+        /* Tabs */
+
+        .tab {
+            display: none;
+        }
+
+        .tablabel {
+            border-bottom: 0.2em solid slateblue;
+            width: calc(50% - 0.1em); /* subtract (0.2em * (label_count + 1)) / label_count */
+        }
+
+        .tablabel:not(.tablabel:first-of-type) {
+            border-left: 0.2em solid slateblue;
+        }
+
+        .tabcontent {
+            display: none;
+            order: 1;
+            width: 100%;
+        }
+
+        .tab:checked + .tablabel {
+            border-bottom: none;
+        }
+
+        .tab:checked + .tablabel + .tabcontent {
+            display: block;
+        }
+
+        /* Content */
+
+        .styleeditor {
+            border: 0.2em solid slateblue;
+            margin: 0.2em;
+            padding: 0.2em;
+        }
+
+        .options {
+            border-collapse: collapse;
+        }
+
+        .option {
+            border: 1px solid slateblue;
+        }
+    </style>
 </head>
 <body>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
-    <p>In the long run there will be more content here.</p>
+    <input class="tab" name="tabs" type="radio" id="bookstyle" checked="checked">
+    <label class="tablabel" for="bookstyle">Book Style</label>
+    <section class="tabcontent">
+        <div class="styleeditor">
+            <table class="options">
+                <tr>
+                    <td class="option">Style</td>
+                    <td class="option">Override book stylesheets</td>
+                    <td class="option">Use global style</td>
+                </tr>
+                <tr>
+                    <td class="option">Font: [Placeholder]</td>
+                    <td class="option">[Checkbox]</td>
+                    <td class="option">[Checkbox]</td>
+                </tr>
+                <!-- Placeholder: a bunch more rows -->
+                <tr>
+                    <td class="option" colspan="2">Custom CSS (don't override book stylesheets): [Placeholder]</td>
+                    <td class="option">[Checkbox]</td>
+                </tr>
+            </table>
+            <input type="button" value="Save changes" id="booksavechanges">
+        </div>
+    </section>
+    <input class="tab" name="tabs" type="radio" id="globalstyle">
+    <label class="tablabel" for="globalstyle">Global Style</label>
+    <section class="tabcontent"><div class="styleeditor">
+        <table class="options">
+            <tr>
+                <td class="option">Style</td>
+                <td class="option">Override book stylesheets</td>
+            </tr>
+            <tr>
+                <td class="option">Font: [Placeholder]</td>
+                <td class="option">[Checkbox]</td>
+            </tr>
+            <!-- Placeholder: a bunch more rows -->
+            <tr>
+                <td class="option" colspan="2">Custom CSS (don't override book stylesheets): [Placeholder]</td>
+            </tr>
+        </table>
+        <input type="button" value="Save changes" id="booksavechanges">
+    </div>
+    </section>
 </body>
 </html>
