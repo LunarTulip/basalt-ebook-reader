@@ -1,6 +1,6 @@
 "use strict";
 
-let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js");
+var lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js");
 
 /////////////////
 //   Globals   //
@@ -8,8 +8,8 @@ let lightningCss = import("./libraries/lightningcss/lightningcss-wasm/index.js")
 
 // LightningCSS-relevant information
 
-let lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // Promise such that, if it's fulfilled, LightningCSS is usable
-let browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Promise wrapping the Firefox major version, formatted in LightningCSS-comprehensible format
+var lightningCssImportFinished = lightningCss.then(lcss => lcss.default()); // Promise such that, if it's fulfilled, LightningCSS is usable
+var browserVersion = browser.runtime.getBrowserInfo().then(info => info.version.split(".")[0] << 16); // Promise wrapping the Firefox major version, formatted in LightningCSS-comprehensible format
 
 // epub.js objects
 
@@ -26,14 +26,19 @@ var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
 var currentSectionSource; // XHTML source of the last opened book section
 var currentSectionStyleEditorId; // id of the style editor within currentSection, if applicable
 var currentSectionSourceId; // Unique ID of currentSectionSource; will change if currentSectionSource does
-var sectionIdToBlobsMap = {}; // Map from section UIDs to object with two properties, "doneDisplaying" (true if the section has been or won't ever be displayed) and "blobs" (list of blobs associated with the section)
+var sectionIdToBlobsMap = {}; // Map from section UIDs to objects with two properties, "doneDisplaying" (true if the section has been or won't ever be displayed) and "blobs" (list of blobs associated with the section)
 
 var libraryReopenAllowed = false; // Whether the "Reopen book" button in the library is enabled
 var librarySource; // Promise wrapping the HTML source of the library
 var librarySourceId; // Unique ID of librarySource; will change if librarySource does
-var libraryIdToBlobsMap = {}; // Map from library UIDs to object as in sectionIdToBlobsMap
+var libraryIdToBlobsMap = {}; // Map from library UIDs to objects as in sectionIdToBlobsMap
 
 var styleEditorOpen = false; // Whether the style editor is open for display
+var styleEditorLibrarySource; // Promise wrapping the HTML source of the style editor for display in the library
+var styleEditorLibrarySourceId; // Unique ID of styleEditorLibrarySource; will change if styleEditorLibrarySource does
+var styleEditorBookSource; // Promise wrapping the HTML source of the style editor for display in the currently-opened book
+var styleEditorBookSourceId; // Unique ID of styleEditorBookSource; will change if styleEditorBookSource does
+var styleEditorIdToBlobsMap = {}; // Map from style editor UIDs to objects as in sectionIdToBlobsMap
 
 // basalt.html elements
 
@@ -110,7 +115,7 @@ function injectLibraryStylesheet(doc, docId) {
     style.insertRule("#library {flex: 1; display: flex; flex-direction: row; flex-wrap: wrap;}");
     style.insertRule("#library section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
     style.insertRule("#library button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
-    style.insertRule("#styleeditor iframe {border: none; border-left: 0.2em solid slateblue; width: min(20em, 45vw); height: 100%; max-height:100vh; position: sticky; top: 0;}");
+    style.insertRule("#styleeditor iframe {border: none; border-left: 0.2em solid slateblue; width: min(22.2em, 49.95vw); height: 100%; max-height:100vh; position: sticky; top: 0;}");
     style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
     style.insertRule("#openfileinput {display: none;}");
     style.insertRule("#reopenbook, #returntotop {float: left;}");
@@ -131,7 +136,12 @@ async function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
 
     injectLibraryStylesheet(doc, docId);
     if (styleEditorOpen) {
-        injectStyleEditorIntoDocument(doc, await generateStyleEditor("library"), "styleeditor", "styleeditorbutton");
+        if (!styleEditorLibrarySource) {
+            let styleEditorInfo = generateStyleEditor("library");
+            styleEditorLibrarySource = styleEditorInfo.source;
+            styleEditorLibrarySourceId = styleEditorInfo.id;
+        }
+        injectStyleEditorIntoDocument(doc, await styleEditorLibrarySource, "styleeditor", "styleeditorbutton");
     }
 
     return new XMLSerializer().serializeToString(doc);
@@ -464,7 +474,7 @@ async function reaimStylesheet(sheet, htmlClassName, bodyClassName) {
     // Non-legacy LightningCSS-based replacement code, currently partly broken
 
     await lightningCssImportFinished;
-    let { code, _map } = (await lightningCss).transform({
+    let {code, _map} = (await lightningCss).transform({
         code: new TextEncoder().encode(updatedSheet),
         errorRecovery: true,
         targets: {
@@ -621,7 +631,7 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
 
     basaltStyle.insertRule(`#${headerIdName}, #${footerIdName} {background: slateblue; padding: 10px; z-index: 2147483647;}`);
     basaltStyle.insertRule("main {flex: 1; display: flex; flex-direction: row;}");
-    basaltStyle.insertRule(`#${styleEditorIdName} iframe {border: none; border-left: 0.2em solid slateblue; width: min(20em, 45vw); height: 100%; max-height:100vh; position: sticky; top: 0;}`);
+    basaltStyle.insertRule(`#${styleEditorIdName} iframe {border: none; border-left: 0.2em solid slateblue; width: min(22.2em, 49.95vw); height: 100%; max-height:100vh; position: sticky; top: 0;}`);
     basaltStyle.insertRule(`#${closeButtonIdName}, #${returnToTopButtonIdName} {float: left;}`);
     basaltStyle.insertRule(`#${styleEditorButtonIdName} {float: right;}`);
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
@@ -667,7 +677,12 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     injectBookSectionStylesheets(parsedXhtml, sectionId, writingMode, ignoreStylesClassName, headerIdName, footerIdName, closeButtonIdName, styleEditorButtonIdName, returnToTopButtonIdName, navigationClassName, sectionIdName, htmlClassName, styleEditorIdName);
     injectUiScript(parsedXhtml);
     if (styleEditorOpen) {
-        injectStyleEditorIntoDocument(parsedXhtml, await generateStyleEditor("section", currentBookId), styleEditorIdName, styleEditorButtonIdName);
+        if (!styleEditorBookSource) {
+            let styleEditorInfo = generateStyleEditor("section", currentBookId);
+            styleEditorBookSource = styleEditorInfo.source;
+            styleEditorBookSourceId = styleEditorInfo.id;
+        }
+        injectStyleEditorIntoDocument(parsedXhtml, await styleEditorBookSource, styleEditorIdName, styleEditorButtonIdName);
     }
 
     return {
@@ -681,11 +696,52 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 //   Render Style Editor   //
 /////////////////////////////
 
+// doc: HTML doc to inject stylesheet into
+// docId: UID associated with doc
+function injectStyleEditorStylesheets(doc, docId) {
+    let style = new CSSStyleSheet();
+
+    // Basic layout
+    style.insertRule("html {scrollbar-width: thin; min-height: 100%; border-right: 0.2em solid slateblue;}");
+    style.insertRule("body {color: gold; margin: 0; display: flex; flex-direction: row; flex-wrap: wrap;}");
+
+    // Tabs
+    style.insertRule(".tab {display: none;}");
+    style.insertRule(".tablabel {box-sizing: border-box; width: 50%; border-bottom: 0.2em solid slateblue;}");
+    style.insertRule(".tablabel:not(.tablabel:first-of-type) {border-left: 0.2em solid slateblue;}");
+    style.insertRule(".tabcontent {display: none; order: 1; width: 100%;}");
+    style.insertRule(".tab:checked + .tablabel {border-bottom: none;}");
+    style.insertRule(".tab:checked + .tablabel + .tabcontent {display: block;}");
+
+    // Editor
+    style.insertRule(".styleeditor {border: 0.2em solid slateblue; margin: 0.2em; padding: 0.2em;}");
+    style.insertRule(".options {border-collapse: collapse;}");
+    style.insertRule(".option {border: 0.2em solid slateblue;}");
+    style.insertRule(".optiondescription {text-align: center; margin: 0;}");
+    style.insertRule(".optionselector {color: inherit; border-color: inherit; background: darkslateblue;}"); // It's unclear why inherit fails for background here; work that out maybe
+    style.insertRule(".cssbox {box-sizing: border-box; width: 100%;}");
+    style.insertRule("#booksavechanges, #globalsavechanges {width: 100%;}")
+
+    let styleLink = stylesheetToBlobLink(doc, docId, styleEditorIdToBlobsMap, serializeStylesheet(style, true));
+    doc.head.append(styleLink);
+}
+
+// doc: HTML doc to inject script into
+function injectStyleEditorUiScript(doc) {
+    let scriptUri = browser.runtime.getURL("reader/style-editor.js");
+    let scriptElement = doc.createElement("script");
+    scriptElement.setAttribute("src", scriptUri);
+    doc.body.append(scriptElement);
+}
+
 // doc: HTML doc representing style-editor.html, to be prepared for display
+// docId: UID associated with doc
 // type: string, "library" or "section"
 // bookId: string | undefined, unique ID of book if type is "section"
 // Returns string representation of doc, now customized for display to the user
-function prepareStyleEditorDocForDisplay(doc, type, bookId) {
+function prepareStyleEditorDocForDisplay(doc, docId, type, bookId) {
+    injectStyleEditorStylesheets(doc, docId);
+    injectStyleEditorUiScript(doc);
     return new XMLSerializer().serializeToString(doc);
 }
 
@@ -693,15 +749,21 @@ function prepareStyleEditorDocForDisplay(doc, type, bookId) {
 // bookId: string | undefined, unique ID of book if type is "section"
 // Returns promise wrapping the output style editor HTML
 function generateStyleEditor(type, bookId) {
-    return new Promise((resolve, _reject) => {
-        let styleEditorRequest = new XMLHttpRequest();
-        styleEditorRequest.open("GET", "style-editor.html");
-        styleEditorRequest.responseType = "document";
-        styleEditorRequest.onload = _ => {
-            resolve(prepareStyleEditorDocForDisplay(styleEditorRequest.responseXML, type, bookId));
-        };
-        styleEditorRequest.send();
-    })
+    let styleEditorId = getUniqueId();
+    styleEditorIdToBlobsMap[styleEditorId] = {doneDisplaying: false, blobs: []};
+
+    return {
+        id: styleEditorId,
+        source: new Promise((resolve, _reject) => {
+            let styleEditorRequest = new XMLHttpRequest();
+            styleEditorRequest.open("GET", "style-editor.html");
+            styleEditorRequest.responseType = "document";
+            styleEditorRequest.onload = _ => {
+                resolve(prepareStyleEditorDocForDisplay(styleEditorRequest.responseXML, styleEditorId, type, bookId));
+            };
+            styleEditorRequest.send();
+        }),
+    }
 }
 
 // doc: library or section document into which to inject the editor
@@ -770,16 +832,27 @@ async function displaySection(index, fragment) {
 
 // liveType: string, "library" or "section" depending on whether the toggle command was sent from the library or from an open book section
 async function openStyleEditor(liveType) {
+    if (styleEditorBookSourceId) {
+        styleEditorIdToBlobsMap[styleEditorBookSourceId].doneDisplaying = true;
+    }
+    if (styleEditorLibrarySourceId) {
+        styleEditorIdToBlobsMap[styleEditorLibrarySourceId].doneDisplaying = true;
+    }
+
     // Open style editor in live doc
-    let liveTypeEditorSource = generateStyleEditor(liveType, currentBookId);
+    let liveTypeEditorInfo = generateStyleEditor(liveType, currentBookId);
     let liveDoc = bookIframe.contentWindow.document;
 
     let liveEditorId, liveEditorButtonId, unliveType;
     if (liveType === "library") {
+        styleEditorLibrarySource = liveTypeEditorInfo.source;
+        styleEditorLibrarySourceId = liveTypeEditorInfo.id;
         liveEditorId = "styleeditor";
         liveEditorButtonId = "styleeditorbutton";
         unliveType = "section";
     } else if (liveType === "section") {
+        styleEditorBookSource = liveTypeEditorInfo.source;
+        styleEditorLibrarySourceId = liveTypeEditorInfo.id;
         liveEditorId = currentSectionStyleEditorId;
         liveEditorButtonId = liveDoc.querySelector('header input[value$=" style editor"]').id;
         unliveType = "library"
@@ -788,28 +861,31 @@ async function openStyleEditor(liveType) {
         throw "BasaltInternalError";
     }
 
-    injectStyleEditorIntoDocument(liveDoc, await liveTypeEditorSource, liveEditorId, liveEditorButtonId);
+    injectStyleEditorIntoDocument(liveDoc, await liveTypeEditorInfo.source, liveEditorId, liveEditorButtonId);
     styleEditorOpen = true;
 
-    // Open style editor in non-live docs
+    // Open style editor in docs' source code
     let parser = new DOMParser();
+    let serializer = new XMLSerializer();
 
     if (currentSection) {
-        let unliveTypeEditorSource = generateStyleEditor(unliveType, currentBookId);
-        let serializer = new XMLSerializer();
+        let unliveTypeEditorInfo = generateStyleEditor(unliveType, currentBookId);
 
         let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
-        let sectionEditorId = currentSectionStyleEditorId;
         let sectionEditorButtonId = sectionDoc.querySelector('header input[value$=" style editor"]').id;
 
         let libraryDoc = parser.parseFromString(await librarySource, "text/html");
 
         if (liveType === "section") {
-            injectStyleEditorIntoDocument(sectionDoc, await liveTypeEditorSource, sectionEditorId, sectionEditorButtonId);
-            injectStyleEditorIntoDocument(libraryDoc, await unliveTypeEditorSource, "styleeditor", "styleeditorbutton");
+            styleEditorLibrarySource = unliveTypeEditorInfo.source;
+            styleEditorLibrarySourceId = unliveTypeEditorInfo.id;
+            injectStyleEditorIntoDocument(libraryDoc, await unliveTypeEditorInfo.source, "styleeditor", "styleeditorbutton");
+            injectStyleEditorIntoDocument(sectionDoc, await liveTypeEditorInfo.source, currentSectionStyleEditorId, sectionEditorButtonId);
         } else {
-            injectStyleEditorIntoDocument(sectionDoc, await unliveTypeEditorSource, sectionEditorId, sectionEditorButtonId);
-            injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorSource, "styleeditor", "styleeditorbutton");
+            styleEditorBookSource = unliveTypeEditorInfo.source;
+            styleEditorBookSourceId = unliveTypeEditorInfo.id;
+            injectStyleEditorIntoDocument(sectionDoc, await unliveTypeEditorInfo.source, currentSectionStyleEditorId, sectionEditorButtonId);
+            injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorInfo.source, "styleeditor", "styleeditorbutton");
         }
 
         currentSectionSource = serializer.serializeToString(sectionDoc);
@@ -817,9 +893,11 @@ async function openStyleEditor(liveType) {
     } else {
         // No book has been opened; therefore there's just the library, and liveType is "library"
         let libraryDoc = parser.parseFromString(await librarySource, "text/html");
-        injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorSource, "styleeditor", "styleeditorbutton");
-        librarySource = new Promise((resolve, _reject) => resolve(new XMLSerializer().serializeToString(libraryDoc)));
+        injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorInfo.source, "styleeditor", "styleeditorbutton");
+        librarySource = new Promise((resolve, _reject) => resolve(serializer.serializeToString(libraryDoc)));
     }
+
+    revokeFinishedBlobs(styleEditorIdToBlobsMap);
 }
 
 // liveType: string, "library" or "section" depending on whether the toggle command was sent from the library or from an open book section
@@ -844,7 +922,7 @@ async function closeStyleEditor(liveType) {
     removeStyleEditorFromDocument(liveDoc, liveEditorId, liveEditorButtonId);
     styleEditorOpen = false;
 
-    // Close style editor in non-live docs
+    // Close style editor in docs' source code
     let parser = new DOMParser();
     let serializer = new XMLSerializer();
 
@@ -874,6 +952,9 @@ async function toggleStyleEditor(liveType) {
 async function openBook(file) {
     if (book) {
         book.destroy();
+        if (styleEditorBookSource) {
+            styleEditorBookSource = null;
+        }
     }
     book = ePub(file);
 

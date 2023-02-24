@@ -28,6 +28,7 @@ Medium-term (next steps after release):
     - Allow moving style editor between left and right sides of page
 - Settings menu
     - Cache options: number / max size of books to cache, and whether to open straight into the last cached book
+    - Sync options: whether to sync styles between devices (separate options for global vs. book styles)
 - Add support for non-Firefox browsers.
 - Support SVGs in the spine.
 - Add support for `scrolled-continuous` display, and an option to default to it.
