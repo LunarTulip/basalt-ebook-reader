@@ -3,8 +3,11 @@
     "homepage_url": "https://github.com/LunarTulip/basalt-ebook-reader",
     "manifest_version": 2,
     "name": "Basalt eBook Reader",
+    "permissions": [
+        "storage"
+    ],
     "short_name": "Basalt",
-    "version": "0.4.16",
+    "version": "0.4.17",
     "web_accessible_resources": [
         "reader/*"
     ]

@@ -3,12 +3,19 @@
 <head>
     <meta charset="utf-8">
     <title>Basalt eBook Reader Style Editor</title>
+    <meta itemprop="type" content="section" id="typemeta">
 </head>
 <body>
     <input class="tab" name="tabs" type="radio" id="bookstyle" checked="checked">
     <label class="tablabel" for="bookstyle">Book Style</label>
     <section class="tabcontent">
         <form class="styleeditor">
+            <div>
+                <label for="bookpreset">Load preset:</label>
+                <select class="presetselector" name="bookpreset" id="bookpreset">
+                    <option value="slate">Slate</option>
+                </select>
+            </div>
             <table class="options">
                 <tr> <!-- Column headings -->
                     <td class="option">Style</td>
@@ -21,7 +28,7 @@
                             <label for="bookfont">Font</label>
                         </p>
                         <select class="optionselector" name="bookfont" id="bookfont">
-                            <option value="default">[Use browser default]</option>
+                            <option value="initial">[Use browser default]</option>
                             <option value="serif">Serif</option>
                             <option value="sans-serif">Sans-serif</option>
                             <option value="monospace">Monospace</option>
@@ -56,6 +63,12 @@
     <label class="tablabel" for="globalstyle">Global Style</label>
     <section class="tabcontent">
         <form class="styleeditor">
+            <div>
+                <label for="globalpreset">Load preset:</label>
+                <select class="presetselector" name="globalpreset" id="globalpreset">
+                    <option value="slate">Slate</option>
+                </select>
+            </div>
             <table class="options">
                 <tr> <!-- Column headings -->
                     <td class="option">Style</td>

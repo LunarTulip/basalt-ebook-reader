@@ -21,10 +21,16 @@ var currentBookId; // The unique ID of the book from which the current section i
 
 var nextUniqueId = new Uint32Array(new ArrayBuffer(4)); // For manipulation via Atomics as a source of UIDs
 
+var globalStyle; // Global style info
+var libraryStyle; // Style info for library
+var libraryStyleMerged; // Style info for library, with global style info merged in where appropriate
+var currentBookStyle; // Book-specific style info for current book
+var currentBookStyleMerged; // Style info for current book, with global style info merged in where appropriate
+
 var currentDirectory; // Path to the directory housing currentSection
 var sectionToTocMap; // Mapping from XHTML index in spine to section in TOC
+var currentSectionStyleInfo; // Classes, IDs, and miscellaneous stylesheet-relevant info for currentSection
 var currentSectionSource; // XHTML source of the last opened book section
-var currentSectionStyleEditorId; // id of the style editor within currentSection, if applicable
 var currentSectionSourceId; // Unique ID of currentSectionSource; will change if currentSectionSource does
 var sectionIdToBlobsMap = {}; // Map from section UIDs to objects with two properties, "doneDisplaying" (true if the section has been or won't ever be displayed) and "blobs" (list of blobs associated with the section)
 
@@ -106,23 +112,80 @@ function revokeFinishedBlobs(map) {
 
 // doc: HTML doc representing library.html, to have styles inserted
 // docId: UID associated with doc
-function injectLibraryStylesheet(doc, docId) {
-    let style = new CSSStyleSheet();
+function injectLibraryStylesheets(doc, docId) {
+    // Figure out what rules are going to need pushing where
 
-    style.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;}");
-    style.insertRule("header, footer {background: slateblue; padding: 10px; z-index: 1;}");
-    style.insertRule("main {flex: 1; display: flex; flex-direction: row;}");
-    style.insertRule("#library {flex: 1; display: flex; flex-direction: row; flex-wrap: wrap;}");
-    style.insertRule("#library section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
-    style.insertRule("#library button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
-    style.insertRule("#styleeditor iframe {border: none; border-left: 0.2em solid slateblue; width: min(22.2em, 49.95vw); height: 100%; max-height:100vh; position: sticky; top: 0;}");
-    style.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
-    style.insertRule("#openfileinput {display: none;}");
-    style.insertRule("#reopenbook, #returntotop {float: left;}");
-    style.insertRule("#styleeditorbutton {float: right;}");
+    let nonBookOverwritingBodyStyleRules = [];
+    let bookOverwritingBodyStyleRules = [];
 
-    let styleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(style, true));
-    doc.head.append(styleLink);
+    if (!libraryStyleMerged.font.override) {
+        nonBookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value}`);
+    } else {
+        bookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value}`);
+    }
+    // More options go here, once more options exist
+
+    // Push all rules to appropriate places, as well as building the core library UI style
+
+    let nonBookOverwritingStyle = new CSSStyleSheet();
+
+    if (nonBookOverwritingBodyStyleRules.length > 0) {
+        nonBookOverwritingStyle.insertRule(`body {${nonBookOverwritingBodyStyleRules.join(" ")}}`);
+    }
+
+    let nonBookOverwritingStyleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(nonBookOverwritingStyle, true));
+    doc.head.append(nonBookOverwritingStyleLink);
+
+    let nonBookOverwritingCustomCss = new CSSStyleSheet();
+    nonBookOverwritingCustomCss.replaceSync(libraryStyleMerged.customCssNoOverride.value);
+    let nonBookOverwritingCustomCssLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(nonBookOverwritingCustomCss, false));
+    doc.head.append(nonBookOverwritingCustomCssLink);
+
+    let libraryUiStyle = new CSSStyleSheet();
+
+    libraryUiStyle.insertRule("body {background: darkslateblue; color: gold; margin: 0; padding: 0;}");
+    libraryUiStyle.insertRule("#library {display: flex; flex-direction: row; flex-wrap: wrap;");
+    libraryUiStyle.insertRule("#library section {margin: min(1em, 2.25vw); width: min(20em, 45vw); text-align: center;}");
+    libraryUiStyle.insertRule("#library button {all: unset; width: min(20em, 45vw); height: min(20em, 45vw); outline: 0.2em solid black; display: flex; justify-content: center; align-items: center; cursor: pointer;}");
+    libraryUiStyle.insertRule("#openfile p {font-size: min(15em, 33.75vw); opacity: 50%;}");
+    libraryUiStyle.insertRule("#openfileinput {display: none;}");
+
+    let libraryUiStyleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(libraryUiStyle, true));
+    doc.head.append(libraryUiStyleLink);
+
+    // THINGS BELOW HERE MIGHT NEED MODIFICATION AND CLEVERNESS TO DO THEIR OVERRIDES CORRECTLY
+
+    let bookOverwritingStyle = new CSSStyleSheet();
+
+    if (bookOverwritingBodyStyleRules.length > 0) {
+        bookOverwritingStyle.insertRule(`#library * {${bookOverwritingBodyStyleRules.join(" ")}}`);
+    }
+
+    let bookOverwritingStyleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(bookOverwritingStyle, true));
+    doc.head.append(bookOverwritingStyleLink);
+
+    // let bookOverwritingCustomCss = new CSSStyleSheet();
+    // bookOverwritingCustomCss.replaceSync(libraryStyleMerged.customCssOverrideBook.value);
+    // let bookOverwritingCustomCssLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(bookOverwritingCustomCss, false));
+    // doc.head.append(bookOverwritingCustomCssLink);
+
+    let basaltUiStyle = new CSSStyleSheet();
+
+    basaltUiStyle.insertRule("body {display: flex; flex-direction: column; min-height: 100vh;");
+    basaltUiStyle.insertRule("header, footer {background: slateblue; padding: 10px; z-index: 1;");
+    basaltUiStyle.insertRule("main {flex: 1; display: flex; flex-direction: row;");
+    basaltUiStyle.insertRule("#library {flex: 1;}");
+    basaltUiStyle.insertRule("#styleeditor iframe {border: none; border-left: 0.2em solid slateblue; width: min(22.2em, 49.95vw); height: 100%; max-height:100vh; position: sticky; top: 0;}");
+    basaltUiStyle.insertRule("#reopenbook, #returntotop {float: left;}");
+    basaltUiStyle.insertRule("#styleeditorbutton {float: right;}");
+
+    let basaltUiStyleLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(basaltUiStyle, true));
+    doc.head.append(basaltUiStyleLink);
+
+    // let uiOverwritingCustomCss = new CSSStyleSheet();
+    // uiOverwritingCustomCss.replaceSync(libraryStyleMerged.customCssOverrideUi.value);
+    // let uiOverwritingCustomCssLink = stylesheetToBlobLink(doc, docId, libraryIdToBlobsMap, serializeStylesheet(uiOverwritingCustomCss, false));
+    // doc.head.append(uiOverwritingCustomCssLink)
 }
 
 // doc: HTML doc representing library.html, to be prepared for display
@@ -134,7 +197,7 @@ async function prepareLibraryDocForDisplay(doc, docId, reopenAllowed) {
         doc.getElementById("reopenbook").setAttribute("disabled", "disabled");
     }
 
-    injectLibraryStylesheet(doc, docId);
+    injectLibraryStylesheets(doc, docId);
     if (styleEditorOpen) {
         if (!styleEditorLibrarySource) {
             let styleEditorInfo = generateStyleEditor("library");
@@ -275,7 +338,9 @@ async function getStylesheets(doc) {
             // Update to make sure the link is internal and toss an error if not
             sheetText = await fetch(node.href).then(async content => await content.text());
         } else {
-            alert("Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. (This should never happen; please report if it does.)");
+            let errorMessage = "Error: misidentified non-stylesheet-bearing node as stylesheet-bearing. To fix reader functionality, please refresh the page. (This should never happen; please report if it does.)";
+            console.error(errorMessage);
+            alert(errorMessage);
             throw "BasaltInternalError";
         }
 
@@ -613,7 +678,12 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
     doc.head.prepend(lowPriorityStyleLink);
 
     // High-priority style (will override the book's stylesheets)
+    let highPriorityStyle = new CSSStyleSheet();
+
     // Currently undefined, pending work on the style editor
+
+    let highPriorityStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(highPriorityStyle, true));
+    doc.head.append(highPriorityStyleLink);
 
     // Basalt style (will apply to the Basalt UI and override even highPriorityStyle)
     let basaltStyle = new CSSStyleSheet();
@@ -637,7 +707,7 @@ function injectBookSectionStylesheets(doc, docId, writingMode, ignoreStylesClass
     basaltStyle.insertRule(`.${navigationClassName} {text-align: center;}`);
 
     let basaltStyleLink = stylesheetToBlobLink(doc, docId, sectionIdToBlobsMap, serializeStylesheet(basaltStyle, true));
-    doc.head.prepend(basaltStyleLink);
+    doc.head.append(basaltStyleLink);
 }
 
 // doc: XHTML doc to inject script into
@@ -678,7 +748,7 @@ async function prepareBookXhtmlForDisplay(xhtml) {
     injectUiScript(parsedXhtml);
     if (styleEditorOpen) {
         if (!styleEditorBookSource) {
-            let styleEditorInfo = generateStyleEditor("section", currentBookId);
+            let styleEditorInfo = generateStyleEditor("section");
             styleEditorBookSource = styleEditorInfo.source;
             styleEditorBookSourceId = styleEditorInfo.id;
         }
@@ -687,7 +757,27 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 
     return {
         id: sectionId,
-        styleEditorId: styleEditorIdName,
+        styleInfo: {
+            classes: {
+                ignoreStyles: ignoreStylesClassName,
+                navigation: navigationClassName,
+                html: htmlClassName,
+                body: bodyClassName,
+            },
+            ids: {
+                header: headerIdName,
+                footer: footerIdName,
+                closeButton: closeButtonIdName,
+                styleEditorButton: styleEditorButtonIdName,
+                returnToTopButton: returnToTopButtonIdName,
+                section: sectionIdName,
+                styleEditor: styleEditorIdName,
+            },
+            misc: {
+                writingMode: writingMode,
+            },
+        },
+        // styleEditorId: styleEditorIdName,
         source: new XMLSerializer().serializeToString(parsedXhtml),
     };
 }
@@ -696,13 +786,29 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 //   Render Style Editor   //
 /////////////////////////////
 
+// doc: style editor HTML doc to set the tab name in
+// type: string, "library" or "section"
+function adjustIfInLibrary(doc, type) {
+    if (type === "library") {
+        let tabNameLabel = doc.getElementById("bookstyle").labels[0];
+        tabNameLabel.innerText = "Library Style";
+
+        let overrideColumnLabels = doc.querySelectorAll("table > tbody > tr:first-child > td:nth-child(2)"); // Replace with a class for increased change-resistance?
+        for (let overrideLabel of overrideColumnLabels) {
+            overrideLabel.innerText = "Override library stylesheets";
+        }
+
+        doc.getElementById("typemeta").setAttribute("content", "library");
+    }
+}
+
 // doc: HTML doc to inject stylesheet into
 // docId: UID associated with doc
-function injectStyleEditorStylesheets(doc, docId) {
+function injectStyleEditorStylesheet(doc, docId) {
     let style = new CSSStyleSheet();
 
     // Basic layout
-    style.insertRule("html {scrollbar-width: thin; min-height: 100%; border-right: 0.2em solid slateblue;}");
+    style.insertRule("html {scrollbar-width: thin; min-height: calc(100% - 0.4em); border-right: 0.2em solid slateblue; border-top: 0.2em solid slateblue; border-bottom: 0.2em solid slateblue}");
     style.insertRule("body {color: gold; margin: 0; display: flex; flex-direction: row; flex-wrap: wrap;}");
 
     // Tabs
@@ -715,10 +821,11 @@ function injectStyleEditorStylesheets(doc, docId) {
 
     // Editor
     style.insertRule(".styleeditor {border: 0.2em solid slateblue; margin: 0.2em; padding: 0.2em;}");
+    style.insertRule(".presetselector {display: inline;}");
     style.insertRule(".options {border-collapse: collapse;}");
     style.insertRule(".option {border: 0.2em solid slateblue;}");
     style.insertRule(".optiondescription {text-align: center; margin: 0;}");
-    style.insertRule(".optionselector {color: inherit; border-color: inherit; background: darkslateblue;}"); // It's unclear why inherit fails for background here; work that out maybe
+    style.insertRule(".optionselector, .presetselector {color: inherit; border-color: slateblue; background: darkslateblue;}"); // It's unclear why inherit fails for border-color and background; work that out maybe
     style.insertRule(".cssbox {box-sizing: border-box; width: 100%;}");
     style.insertRule("#booksavechanges, #globalsavechanges {width: 100%;}")
 
@@ -739,16 +846,16 @@ function injectStyleEditorUiScript(doc) {
 // type: string, "library" or "section"
 // bookId: string | undefined, unique ID of book if type is "section"
 // Returns string representation of doc, now customized for display to the user
-function prepareStyleEditorDocForDisplay(doc, docId, type, bookId) {
-    injectStyleEditorStylesheets(doc, docId);
+function prepareStyleEditorDocForDisplay(doc, docId, type) {
+    adjustIfInLibrary(doc, type);
+    injectStyleEditorStylesheet(doc, docId);
     injectStyleEditorUiScript(doc);
     return new XMLSerializer().serializeToString(doc);
 }
 
 // type: string, "library" or "section"
-// bookId: string | undefined, unique ID of book if type is "section"
 // Returns promise wrapping the output style editor HTML
-function generateStyleEditor(type, bookId) {
+function generateStyleEditor(type) {
     let styleEditorId = getUniqueId();
     styleEditorIdToBlobsMap[styleEditorId] = {doneDisplaying: false, blobs: []};
 
@@ -759,7 +866,7 @@ function generateStyleEditor(type, bookId) {
             styleEditorRequest.open("GET", "style-editor.html");
             styleEditorRequest.responseType = "document";
             styleEditorRequest.onload = _ => {
-                resolve(prepareStyleEditorDocForDisplay(styleEditorRequest.responseXML, styleEditorId, type, bookId));
+                resolve(prepareStyleEditorDocForDisplay(styleEditorRequest.responseXML, styleEditorId, type));
             };
             styleEditorRequest.send();
         }),
@@ -790,6 +897,126 @@ function removeStyleEditorFromDocument(doc, editorId, editorButtonId) {
     doc.getElementById(editorButtonId).setAttribute("value", "Open style editor");
 }
 
+////////////////////////
+//   Style-Updating   //
+////////////////////////
+
+// nonGlobalStyle: libraryStyle or currentBookStyle
+// Returns nonGlobalStyle except with all values which are set to use the global value replaced with the appropriate global value
+function getMergedStyle(nonGlobalStyle) {
+    let mergedStyle = {};
+    for (let styleName in nonGlobalStyle) {
+        if (nonGlobalStyle[styleName].useGlobal) {
+            mergedStyle[styleName] = globalStyle[styleName];
+        } else {
+            mergedStyle[styleName] = nonGlobalStyle[styleName];
+            delete mergedStyle[styleName]["useGlobal"];
+        }
+    }
+    return mergedStyle;
+}
+
+// newStyle: information on the values being pushed from the style editor to the document (see style-editor.js for structure)
+// newStyleType: string, "book" or "global"
+// editorType: string, "library" or "section"
+function saveStyle(newStyle, newStyleType, editorType) {
+    if (newStyleType === "global") {
+        globalStyle = newStyle;
+        libraryStyleMerged = getMergedStyle(libraryStyle);
+        currentBookStyleMerged = getMergedStyle(currentBookStyle);
+        browser.storage.local.set({"global": globalStyle});
+    } else if (newStyleType === "book" && editorType === "library") {
+        libraryStyle = newStyle;
+        libraryStyleMerged = getMergedStyle(libraryStyle);
+        browser.storage.local.set({"library": libraryStyle});
+    } else if (newStyleType === "book" && editorType === "section") {
+        currentBookStyle = newStyle;
+        currentBookStyleMerged = getMergedStyle(currentBookStyle);
+        browser.storage.local.get({"book": {}}).then(bookStylesObject => browser.storage.local.set(Object.assign(bookStylesObject.book, {currentBookId: currentBookStyle})));
+    } else {
+        let errorMessage = `Error: received style-save command of style type '${newStyleType}' and editor type '${editorType}'. To fix reader functionality, please refresh the page. (This should never happen; please report it if it does.)`;
+        console.error(errorMessage);
+        alert(errorMessage);
+        throw "BasaltInternalError";
+    }
+}
+
+// doc: HTML or XHTML doc for the page to update style in
+// pageType: string, "library" or "section"
+// liveDisplay: bool, true if doc is currently being shown in-browser, else false
+function updatePageStyle(doc, pageType, liveDisplay) {
+    let mainFramePreexistingStyles = Array.from(doc.querySelectorAll("link[rel=stylesheet]"));
+
+    if (pageType === "library") {
+        injectLibraryStylesheets(doc, librarySourceId);
+        mainFramePreexistingStyles.forEach(styleLink => styleLink.remove());
+        let styleEditorFrame = doc.querySelector("#styleeditor iframe");
+        if (styleEditorFrame) {
+            let styleEditorDoc;
+            if (liveDisplay) {
+                styleEditorDoc = styleEditorFrame.contentWindow.document;
+            } else {
+                styleEditorDoc = new DOMParser().parseFromString(styleEditorFrame.getAttribute("srcdoc"), "text/html");
+            }
+            let styleEditorFramePreexistingStyles = Array.from(styleEditorDoc.querySelectorAll("link[rel=stylesheet]"));
+            injectStyleEditorStylesheet(styleEditorDoc, styleEditorLibrarySourceId);
+            styleEditorFramePreexistingStyles.at(-1).remove();
+            if (!liveDisplay) {
+                styleEditorFrame.setAttribute("srcdoc", new XMLSerializer().serializeToString(styleEditorDoc));
+            }
+            // This should also update the inputs' values to MergedStyle
+        }
+    } else if (pageType === "section") {
+        injectBookSectionStylesheets(doc, currentSectionSourceId, currentSectionStyleInfo.misc.writingMode, currentSectionStyleInfo.classes.ignoreStyles, currentSectionStyleInfo.ids.header, currentSectionStyleInfo.ids.footer, currentSectionStyleInfo.ids.closeButton, currentSectionStyleInfo.ids.styleEditorButton, currentSectionStyleInfo.ids.returnToTopButton, currentSectionStyleInfo.classes.navigation, currentSectionStyleInfo.ids.section, currentSectionStyleInfo.classes.html, currentSectionStyleInfo.ids.styleEditor);
+        [mainFramePreexistingStyles[0], mainFramePreexistingStyles.at(-2), mainFramePreexistingStyles.at(-1)].forEach(styleLink => styleLink.remove());
+        let styleEditorFrame = doc.querySelector(`#${currentSectionStyleInfo.ids.styleEditor} iframe`);
+        if (styleEditorFrame) {
+            let styleEditorDoc;
+            if (liveDisplay) {
+                styleEditorDoc = styleEditorFrame.contentWindow.document;
+            } else {
+                styleEditorDoc = new DOMParser().parseFromString(styleEditorFrame.getAttribute("srcdoc"), "text/html");
+            }
+            let styleEditorFramePreexistingStyles = Array.from(styleEditorDoc.querySelectorAll("link[rel=stylesheet]"));
+            injectStyleEditorStylesheet(styleEditorDoc, styleEditorBookSourceId);
+            styleEditorFramePreexistingStyles.at(-1).remove();
+            if (!liveDisplay) {
+                styleEditorFrame.setAttribute("srcdoc", new XMLSerializer().serializeToString(styleEditorDoc));
+            }
+            // This should also update the inputs' values to MergedStyle
+        }
+    } else {
+        let errorMessage = `Error: received style-update command of page type '${pageType}'. To fix reader functionality, please refresh the page. (This should never happen; please report if it does.)`;
+        console.error(errorMessage);
+        alert(errorMessage);
+        throw "BasaltInternalError";
+    }
+}
+
+async function regenerateStylesInPageSources() {
+    let parser = new DOMParser();
+    let serializer = new XMLSerializer();
+
+    let libraryDoc = parser.parseFromString(await librarySource, "text/html");
+    updatePageStyle(libraryDoc, "library");
+    librarySource = new Promise((resolve, _reject) => resolve(serializer.serializeToString(libraryDoc)));
+
+    if (currentSectionSource) {
+        let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
+        updatePageStyle(sectionDoc, "section");
+        currentSectionSource = serializer.serializeToString(sectionDoc);
+    }
+}
+
+// newStyle: information on the values being pushed from the style editor to the document (see style-editor.js for structure)
+// newStyleType: string, "book" or "global"
+// editorType: string, "library" or "section"
+function updateStyles(newStyle, newStyleType, editorType) {
+    saveStyle(newStyle, newStyleType, editorType);
+    updatePageStyle(bookIframe.contentWindow.document, editorType);
+    regenerateStylesInPageSources();
+}
+
 ////////////////////
 //   Navigation   //
 ////////////////////
@@ -800,11 +1027,12 @@ async function displayLibrary() {
 }
 
 // index: numerical index into spine
+// opening: bool, whether the book is being opened for the first time
 // fragment: string | undefined, fragment to jump to in section if applicable
-async function displaySection(index, fragment) {
+async function displaySection(index, opening, fragment) {
     // There exist race conditions here. (currentDirectory, for instance, might be changed again here before being used in basalt-ui.js.) Figure out a more elegant solution.
     let newSection = false;
-    if ((!currentSection) || (index !== currentSection.index) || (currentBookId !== book.package.uniqueIdentifier)) {
+    if (!(currentSection) || (index !== currentSection.index) || opening) {
         let section = book.spine.get(index);
         if (section) {
             newSection = true;
@@ -817,7 +1045,7 @@ async function displaySection(index, fragment) {
             section.render(book.load.bind(book)).then(async xhtml => {
                 let xhtmlToDisplay = await prepareBookXhtmlForDisplay(xhtml);
                 currentSectionSource = xhtmlToDisplay.source;
-                currentSectionStyleEditorId = xhtmlToDisplay.styleEditorId;
+                currentSectionStyleInfo = xhtmlToDisplay.styleInfo;
                 currentSectionSourceId = xhtmlToDisplay.id;
                 bookIframe.setAttribute("srcdoc", xhtmlToDisplay.source);
                 revokeFinishedBlobs(sectionIdToBlobsMap);
@@ -840,7 +1068,7 @@ async function openStyleEditor(liveType) {
     }
 
     // Open style editor in live doc
-    let liveTypeEditorInfo = generateStyleEditor(liveType, currentBookId);
+    let liveTypeEditorInfo = generateStyleEditor(liveType);
     let liveDoc = bookIframe.contentWindow.document;
 
     let liveEditorId, liveEditorButtonId, unliveType;
@@ -852,12 +1080,14 @@ async function openStyleEditor(liveType) {
         unliveType = "section";
     } else if (liveType === "section") {
         styleEditorBookSource = liveTypeEditorInfo.source;
-        styleEditorLibrarySourceId = liveTypeEditorInfo.id;
-        liveEditorId = currentSectionStyleEditorId;
+        styleEditorBookSourceId = liveTypeEditorInfo.id;
+        liveEditorId = currentSectionStyleInfo.ids.styleEditor
         liveEditorButtonId = liveDoc.querySelector('header input[value$=" style editor"]').id;
         unliveType = "library"
     } else {
-        alert(`Error: received style editor open command of type '${liveType}'. (This should never happen; please report if it does.)`);
+        let errorMessage = `Error: received style editor open command of type '${liveType}'. To fix reader functionality, please refresh the page. (This should never happen; please report if it does.)`;
+        console.error(errorMessage);
+        alert(errorMessage);
         throw "BasaltInternalError";
     }
 
@@ -869,10 +1099,9 @@ async function openStyleEditor(liveType) {
     let serializer = new XMLSerializer();
 
     if (currentSection) {
-        let unliveTypeEditorInfo = generateStyleEditor(unliveType, currentBookId);
+        let unliveTypeEditorInfo = generateStyleEditor(unliveType);
 
         let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
-        let sectionEditorButtonId = sectionDoc.querySelector('header input[value$=" style editor"]').id;
 
         let libraryDoc = parser.parseFromString(await librarySource, "text/html");
 
@@ -880,11 +1109,11 @@ async function openStyleEditor(liveType) {
             styleEditorLibrarySource = unliveTypeEditorInfo.source;
             styleEditorLibrarySourceId = unliveTypeEditorInfo.id;
             injectStyleEditorIntoDocument(libraryDoc, await unliveTypeEditorInfo.source, "styleeditor", "styleeditorbutton");
-            injectStyleEditorIntoDocument(sectionDoc, await liveTypeEditorInfo.source, currentSectionStyleEditorId, sectionEditorButtonId);
+            injectStyleEditorIntoDocument(sectionDoc, await liveTypeEditorInfo.source, currentSectionStyleInfo.ids.styleEditor, currentSectionStyleInfo.ids.styleEditorButton);
         } else {
             styleEditorBookSource = unliveTypeEditorInfo.source;
             styleEditorBookSourceId = unliveTypeEditorInfo.id;
-            injectStyleEditorIntoDocument(sectionDoc, await unliveTypeEditorInfo.source, currentSectionStyleEditorId, sectionEditorButtonId);
+            injectStyleEditorIntoDocument(sectionDoc, await unliveTypeEditorInfo.source, currentSectionStyleInfo.ids.styleEditor, currentSectionStyleInfo.ids.styleEditorButton);
             injectStyleEditorIntoDocument(libraryDoc, await liveTypeEditorInfo.source, "styleeditor", "styleeditorbutton");
         }
 
@@ -911,11 +1140,13 @@ async function closeStyleEditor(liveType) {
         liveEditorButtonId = "styleeditorbutton";
         unliveType = "section";
     } else if (liveType === "section") {
-        liveEditorId = currentSectionStyleEditorId;
+        liveEditorId = currentSectionStyleInfo.ids.styleEditor;
         liveEditorButtonId = liveDoc.querySelector('header input[value$=" style editor"]').id;
         unliveType = "library"
     } else {
-        alert(`Error: received style editor close command of type '${liveType}'. (This should never happen; please report if it does.)`);
+        let errorMessage = `Error: received style editor close command of type '${liveType}'. To fix reader functionality, please refresh the page. (This should never happen; please report if it does.)`;
+        console.error(errorMessage);
+        alert(errorMessage);
         throw "BasaltInternalError";
     }
 
@@ -928,7 +1159,7 @@ async function closeStyleEditor(liveType) {
 
     if (currentSection) {
         let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
-        let sectionEditorId = currentSectionStyleEditorId;
+        let sectionEditorId = currentSectionStyleInfo.ids.styleEditor;
         let sectionEditorButtonId = sectionDoc.querySelector('header input[value$=" style editor"]').id;
         removeStyleEditorFromDocument(sectionDoc, sectionEditorId, sectionEditorButtonId);
         currentSectionSource = serializer.serializeToString(sectionDoc);
@@ -967,11 +1198,23 @@ async function openBook(file) {
     await book.opened;
     let firstLinearSectionIndex = 0;
     let displayed = false;
+    currentBookId = book.package.uniqueIdentifier;
+
+    let bookStorage = await browser.storage.local.get("book");
+    if (bookStorage[currentBookId]) {
+        currentBookStyle = bookStorage[currentBookId];
+    } else {
+        currentBookStyle = {
+            "font": {"useGlobal": true},
+            "customCssNoOverride": {"useGlobal": true},
+        };
+    }
+    currentBookStyleMerged = getMergedStyle(currentBookStyle);
+
     await tocSet;
     while ((firstLinearSectionIndex < book.spine.length) && !displayed) {
         if (book.spine.get(firstLinearSectionIndex).linear) {
             await displaySection(firstLinearSectionIndex);
-            currentBookId = book.package.uniqueIdentifier;
             displayed = true;
         } else {
             firstLinearSectionIndex += 1;
@@ -980,7 +1223,6 @@ async function openBook(file) {
     if (!displayed) {
         console.warn("Book spine is ill-formed. (All spine sections are nonlinear.) Opening into first section as fallback.");
         await displaySection(0);
-        currentBookId = book.package.uniqueIdentifier;
     }
 
     if (!libraryReopenAllowed) {
@@ -1031,31 +1273,51 @@ async function prevSection() {
 //   Main   //
 //////////////
 
-window.addEventListener("message", basaltMessage => {
+window.addEventListener("message", message => { // Catch messages from descendant iframes
     // This leads to potential collisions if someone else is passing messages of coincidentally-identical structure; can it be done better?
     // Also, there be race conditions aplenty here. Figure out a way to mitigate those, ideally.
-    if (basaltMessage.origin === browser.runtime.getURL("").slice(0, -1)) {
-        if (basaltMessage.data.messageType === "BasaltDisplaySection") {
-            displaySection(basaltMessage.data.index, basaltMessage.data.fragment);
-        } else if (basaltMessage.data.messageType === "BasaltNextSection") {
+    if (message.origin === browser.runtime.getURL("").slice(0, -1)) {
+        if (message.data.messageType === "BasaltDisplaySection") {
+            displaySection(message.data.index, message.data.fragment);
+        } else if (message.data.messageType === "BasaltNextSection") {
             nextSection();
-        } else if (basaltMessage.data.messageType === "BasaltPrevSection") {
+        } else if (message.data.messageType === "BasaltPrevSection") {
             prevSection();
-        } else if (basaltMessage.data.messageType === "BasaltOpenBook") {
-            openBook(basaltMessage.data.book);
-        } else if (basaltMessage.data.messageType === "BasaltCloseBook") {
+        } else if (message.data.messageType === "BasaltOpenBook") {
+            openBook(message.data.book);
+        } else if (message.data.messageType === "BasaltCloseBook") {
             closeBook();
-        } else if (basaltMessage.data.messageType === "BasaltResumeBook") {
+        } else if (message.data.messageType === "BasaltResumeBook") {
             resumeBook();
-        } else if (basaltMessage.data.messageType === "BasaltToggleStyleEditor") {
-            toggleStyleEditor(basaltMessage.data.type);
+        } else if (message.data.messageType === "BasaltToggleStyleEditor") {
+            toggleStyleEditor(message.data.type);
+        } else if (message.data.messageType === "BasaltUpdateStyle") {
+            updateStyles(message.data.newStyle, message.data.newStyleType, message.data.editorType);
         }
     }
 });
 
-{
+browser.storage.local.get({
+    "global": {
+        "font": {
+            "value": "initial",
+            "override": false,
+        },
+        "customCssNoOverride": {
+            "value": "",
+        },
+    },
+    "library": {
+        "font": {"useGlobal": true},
+        "customCssNoOverride": {"useGlobal": true},
+    },
+}).then(stylesObject => {
+    globalStyle = stylesObject.global;
+    libraryStyle = stylesObject.library;
+    libraryStyleMerged = getMergedStyle(libraryStyle);
+
     let library = generateLibrary(false);
     librarySource = library.source;
     librarySourceId = library.id;
     displayLibrary();
-}
+});

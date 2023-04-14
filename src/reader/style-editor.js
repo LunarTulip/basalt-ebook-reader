@@ -4,6 +4,10 @@
 //   Globals   //
 /////////////////
 
+// Type
+
+var editorType = document.getElementById("typemeta").getAttribute("content");
+
 // Relevant HTML elements
 
 var bookSaveChangesButton = document.getElementById("booksavechanges");
@@ -22,7 +26,17 @@ var bookCustomCssNoOverrideSavedState = bookFormElements.booklightcss.value;
 //   Functions   //
 ///////////////////
 
-// Both of these are just for testing; it might be the case that no functions are needed, in the long run?
+function getGlobalStyleInfo() {
+    return {
+        font: {
+            value: globalFormElements.globalfont.value,
+            override: globalFormElements.globalfontoverride.checked,
+        },
+        customCssNoOverride: {
+            value: globalFormElements.globallightcss.value,
+        },
+    }
+}
 
 function getBookStyleInfo() {
     return {
@@ -36,18 +50,6 @@ function getBookStyleInfo() {
             useGlobal: bookFormElements.booklightcssglobal.checked,
         },
     };
-}
-
-function getGlobalStyleInfo() {
-    return {
-        font: {
-            value: null,
-            override: globalFormElements.globalfontoverride.checked,
-        },
-        customCssNoOverride: {
-            value: null,
-        },
-    }
 }
 
 /////////////////////////
@@ -81,8 +83,9 @@ bookFormElements.booklightcssglobal.addEventListener("change", _ => {
     }
 });
 
-bookSaveChangesButton.addEventListener("click", _ => console.info(getBookStyleInfo()));
-globalSaveChangesButton.addEventListener("click", _ => console.info(getGlobalStyleInfo()));
+globalSaveChangesButton.addEventListener("click", _ => parent.parent.postMessage({messageType: "BasaltUpdateStyle", newStyle: getGlobalStyleInfo(), newStyleType: "global", editorType: editorType}, parent.parent.document.documentURI));
+
+bookSaveChangesButton.addEventListener("click", _ => parent.parent.postMessage({messageType: "BasaltUpdateStyle", newStyle: getBookStyleInfo(), newStyleType: "book", editorType: editorType}, parent.parent.document.documentURI));
 
 // Next: style-changes on save, plus saving-to-storage.
 // Then, at that point, it'll be time to fill in all the placeholders.
