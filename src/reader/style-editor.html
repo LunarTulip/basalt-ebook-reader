@@ -7,21 +7,23 @@
 </head>
 <body>
     <input class="tab" name="tabs" type="radio" id="bookstyle" checked="checked">
-    <label class="tablabel" for="bookstyle">Book Style</label>
+    <label class="tablabel hasthewordbook" for="bookstyle">Book Style</label>
     <section class="tabcontent">
         <form class="styleeditor">
-            <div>
+            <!-- <div>
                 <label for="bookpreset">Load preset:</label>
                 <select class="presetselector" name="bookpreset" id="bookpreset">
                     <option value="slate">Slate</option>
                 </select>
-            </div>
+                [Add preset load/save/delete buttons, load to the right of the select and save/delete below]
+            </div> -->
             <table class="options">
                 <tr> <!-- Column headings -->
                     <td class="option">Style</td>
-                    <td class="option">Override book stylesheets</td>
+                    <td class="option hasthewordbook">Override book stylesheets</td>
                     <td class="option">Use global style</td>
                 </tr>
+                <!-- Text -->
                 <tr> <!-- Font -->
                     <td class="option">
                         <p class="optiondescription">
@@ -32,7 +34,7 @@
                             <option value="serif">Serif</option>
                             <option value="sans-serif">Sans-serif</option>
                             <option value="monospace">Monospace</option>
-                            <!-- Figure out how to get all the more specific options out of the user's browser to offer them too -->
+                            <!-- See https://stackoverflow.com/a/62755574 for how to find additional fonts to add as options here -->
                         </select>
                     </td>
                     <td class="option">
@@ -42,11 +44,156 @@
                         <input type="checkbox" name="bookfontglobal">
                     </td>
                 </tr>
-                <!-- Placeholder: a bunch more rows -->
+                <tr> <!-- Font size -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookfontsize">Font size (px)</label>
+                        </p>
+                        <input type="number" min="0" name="bookfontsize" id="bookfontsize">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookfontsizeoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookfontsizeglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Text color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookcolor">Text color</label>
+                        </p>
+                        <input type="color" name="bookcolor" id="bookcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookcoloroverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookcolorglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Link color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="booklinkcolor">Link color</label>
+                        </p>
+                        <input type="color" name="booklinkcolor" id="booklinkcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="booklinkcoloroverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="booklinkcolorglobal">
+                    </td>
+                </tr>
+                <!-- Checkbox to mark external links with an identifying icon? -->
+                <!-- Flow -->
+                <tr> <!-- Line spacing -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="booklinespacing">Line spacing</label>
+                        </p>
+                        <input type="number" min="1.0" step="0.1" name="booklinespacing" id="booklinespacing">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="booklinespacingoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="booklinespacingglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Paragraph spacing -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookparagraphspacing">Paragraph spacing</label>
+                        </p>
+                        <input type="number" min="1.0" step="0.1" name="bookparagraphspacing" id="bookparagraphspacing">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookparagraphspacingoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookparagraphspacingglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Indentation -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookindentation">Indentation (px)</label>
+                        </p>
+                        <input type="number" min="0" step="0.1" name="bookindentation" id="bookindentation">
+                        <!-- Figure out what to match on to implement this -->
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookindentationoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookindentationglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Image-size-capping -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookimagesizecap">Cap image size to screen size?</label>
+                        </p>
+                        <input type="checkbox" name="bookimagesizecap" id="bookimagesizecap">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookimagesizecapoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookimagesizecapglobal">
+                    </td>
+                </tr>
+                <!-- UI -->
+                <tr> <!-- Primary background color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookbgcolor">Primary background color</label>
+                        </p>
+                        <input type="color" name="bookbgcolor" id="bookbgcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookbgcoloroverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookbgcolorglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Secondary background color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookuicolor">Secondary background color</label>
+                        </p>
+                        <input type="color" name="bookuicolor" id="bookuicolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookuicoloroverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookuicolorglobal">
+                    </td>
+                </tr>
+                <tr> <!-- Margins -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="bookmargins">Margin size (px)</label>
+                        </p>
+                        <input type="number" min="0" step="0.1" name="bookmargins" id="bookmargins">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookmarginsoverride">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="bookmarginsglobal">
+                    </td>
+                </tr>
+                <!-- Max column width? -->
+                <!-- Custom CSS -->
                 <tr> <!-- CSS (light) -->
                     <td class="option" colspan="2">
                         <p class="optiondescription">
-                            <label for="booklightcss">Custom CSS (don't override book stylesheets)</label>
+                            <label for="booklightcss" class="hasthewordbook">Custom CSS (don't override book stylesheets)</label>
                         </p>
                         <textarea class="optionselector cssbox" spellcheck="false" name="booklightcss" id="booklightcss"></textarea>
                     </td>
@@ -54,25 +201,47 @@
                         <input type="checkbox" id="booklightcssglobal">
                     </td>
                 </tr>
-                <!-- Placeholder: CSS (heavy), CSS (UI) -->
+                <tr> <!-- CSS (heavy) -->
+                    <td class="option" colspan="2">
+                        <p class="optiondescription">
+                            <label for="bookheavycss" class="hasthewordbook">Custom CSS (override book stylesheets)</label>
+                        </p>
+                        <textarea class="optionselector cssbox" spellcheck="false" name="bookheavycss" id="bookheavycss"></textarea>
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" id="bookheavycssglobal">
+                    </td>
+                </tr>
+                <tr> <!-- CSS (UI) -->
+                    <td class="option" colspan="2">
+                        <p class="optiondescription">
+                            <label for="bookuicss">Custom CSS (override Basalt UI)</label>
+                        </p>
+                        <textarea class="optionselector cssbox" spellcheck="false" name="bookuicss" id="bookuicss"></textarea>
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" id="bookuicssglobal">
+                    </td>
+                </tr>
             </table>
             <input type="button" value="Save changes" id="booksavechanges">
+            <!-- Add preview/unpreview button? -->
         </form>
     </section>
     <input class="tab" name="tabs" type="radio" id="globalstyle">
     <label class="tablabel" for="globalstyle">Global Style</label>
     <section class="tabcontent">
         <form class="styleeditor">
-            <div>
+            <!-- <div>
                 <label for="globalpreset">Load preset:</label>
                 <select class="presetselector" name="globalpreset" id="globalpreset">
                     <option value="slate">Slate</option>
                 </select>
-            </div>
+            </div> -->
             <table class="options">
                 <tr> <!-- Column headings -->
                     <td class="option">Style</td>
-                    <td class="option">Override book stylesheets</td>
+                    <td class="option hasthewordbook">Override book stylesheets</td>
                 </tr>
                 <tr> <!-- Font -->
                     <td class="option">
@@ -80,7 +249,7 @@
                             <label for="globalfont">Font</label>
                         </p>
                         <select class="optionselector" name="globalfont" id="globalfont">
-                            <option value="default">[Use browser default]</option>
+                            <option value="initial">[Use browser default]</option>
                             <option value="serif">Serif</option>
                             <option value="sans-serif">Sans-serif</option>
                             <option value="monospace">Monospace</option>
@@ -91,13 +260,142 @@
                         <input type="checkbox" name="globalfontoverride">
                     </td>
                 </tr>
-                <!-- Placeholder: a bunch more rows -->
+                <tr> <!-- Font size -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalfontsize">Font size (px)</label>
+                        </p>
+                        <input type="number" min="0" name="globalfontsize" id="globalfontsize">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalfontsizeoverride">
+                    </td>
+                </tr>
+                <tr> <!-- Text color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalcolor">Text color</label>
+                        </p>
+                        <input type="color" name="globalcolor" id="globalcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalcoloroverride">
+                    </td>
+                </tr>
+                <tr> <!-- Link color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globallinkcolor">Link color</label>
+                        </p>
+                        <input type="color" name="globallinkcolor" id="globallinkcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globallinkcoloroverride">
+                    </td>
+                </tr>
+                <!-- Flow -->
+                <tr> <!-- Line spacing -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globallinespacing">Line spacing</label>
+                        </p>
+                        <input type="number" min="1.0" step="0.1" name="globallinespacing" id="globallinespacing">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globallinespacingoverride">
+                    </td>
+                </tr>
+                <tr> <!-- Paragraph spacing -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalparagraphspacing">Paragraph spacing</label>
+                        </p>
+                        <input type="number" min="1.0" step="0.1" name="globalparagraphspacing" id="globalparagraphspacing">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalparagraphspacingoverride">
+                    </td>
+                </tr>
+                <tr> <!-- Indentation -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalindentation">Indentation (px)</label>
+                        </p>
+                        <input type="number" min="0" step="0.1" name="globalindentation" id="globalindentation">
+                        <!-- Figure out what to match on to implement this -->
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalindentationoverride">
+                    </td>
+                </tr>
+                <tr> <!-- Image-size-capping -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalimagesizecap">Cap image size to screen size?</label>
+                        </p>
+                        <input type="checkbox" name="globalimagesizecap" id="globalimagesizecap">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalimagesizecapoverride">
+                    </td>
+                </tr>
+                <!-- UI -->
+                <tr> <!-- Primary background color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalbgcolor">Primary background color</label>
+                        </p>
+                        <input type="color" name="globalbgcolor" id="globalbgcolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalbgcoloroverride">
+                    </td>
+                </tr>
+                <tr> <!-- Secondary background color -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globaluicolor">Secondary background color</label>
+                        </p>
+                        <input type="color" name="globaluicolor" id="globaluicolor">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globaluicoloroverride">
+                    </td>
+                </tr>
+                <tr> <!-- Margins -->
+                    <td class="option">
+                        <p class="optiondescription">
+                            <label for="globalmargins">Margin size (px)</label>
+                        </p>
+                        <input type="number" min="0" step="0.1" name="globalmargins" id="globalmargins">
+                    </td>
+                    <td class="option">
+                        <input type="checkbox" name="globalmarginsoverride">
+                    </td>
+                </tr>
+                <!-- Custom CSS -->
                 <tr> <!-- CSS (light) -->
                     <td class="option" colspan="2">
                         <p class="optiondescription">
-                            <label for="globallightcss">Custom CSS (don't override book stylesheets)</label>
+                            <label for="globallightcss" class="hasthewordbook">Custom CSS (don't override book stylesheets)</label>
                         </p>
                         <textarea class="optionselector cssbox" spellcheck="false" name="globallightcss" id="globallightcss"></textarea>
+                    </td>
+                </tr>
+                <tr> <!-- CSS (heavy) -->
+                    <td class="option" colspan="2">
+                        <p class="optiondescription">
+                            <label for="globalheavycss" class="hasthewordbook">Custom CSS (override book stylesheets)</label>
+                        </p>
+                        <textarea class="optionselector cssbox" spellcheck="false" name="globalheavycss" id="globalheavycss"></textarea>
+                    </td>
+                </tr>
+                <tr> <!-- CSS (UI) -->
+                    <td class="option" colspan="2">
+                        <p class="optiondescription">
+                            <label for="globaluicss">Custom CSS (override Basalt UI)</label>
+                        </p>
+                        <textarea class="optionselector cssbox" spellcheck="false" name="globaluicss" id="globaluicss"></textarea>
                     </td>
                 </tr>
             </table>

@@ -119,9 +119,9 @@ function injectLibraryStylesheets(doc, docId) {
     let bookOverwritingBodyStyleRules = [];
 
     if (!libraryStyleMerged.font.override) {
-        nonBookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value}`);
+        nonBookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value};`);
     } else {
-        bookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value}`);
+        bookOverwritingBodyStyleRules.push(`font-family: ${libraryStyleMerged.font.value};`);
     }
     // More options go here, once more options exist
 
@@ -790,16 +790,127 @@ async function prepareBookXhtmlForDisplay(xhtml) {
 // type: string, "library" or "section"
 function adjustIfInLibrary(doc, type) {
     if (type === "library") {
-        let tabNameLabel = doc.getElementById("bookstyle").labels[0];
-        tabNameLabel.innerText = "Library Style";
-
-        let overrideColumnLabels = doc.querySelectorAll("table > tbody > tr:first-child > td:nth-child(2)"); // Replace with a class for increased change-resistance?
-        for (let overrideLabel of overrideColumnLabels) {
-            overrideLabel.innerText = "Override library stylesheets";
+        let labelsToOverride = doc.getElementsByClassName("hasthewordbook");
+        for (let labelToOverride of labelsToOverride) {
+            labelToOverride.innerText = labelToOverride.innerText.replace("book", "library").replace("Book", "Library");
         }
 
         doc.getElementById("typemeta").setAttribute("content", "library");
     }
+}
+
+// checkbox: input of type "checkbox"
+// leaveChecked: true if checkbox should be checked, false if checkbox should be unchecked
+function setCheckbox(checkbox, leaveChecked) {
+    if (leaveChecked) {
+        checkbox.setAttribute("checked", "checked");
+        checkbox.checked = true;
+    } else {
+        checkbox.removeAttribute("checked");
+        checkbox.checked = false;
+    }
+}
+
+// input: input (or non-input) with "disabled" attribute support
+// leaveEnabled: true if input should be enabled, false of input should be disabled
+function setEnabledness(input, leaveEnabled) {
+    if (leaveEnabled) {
+        input.setAttribute("disabled", "disabled");
+        input.disabled = true;
+    } else {
+        input.removeAttribute("disabled");
+        input.disabled = false;
+    }
+}
+
+// bookFormElements: HTML #booksavechanges form elements object from style-editor.html
+// globalFormElements: HTML #globalsavechanges form elements object from style-editor.html
+// nonGlobalStyle: libraryStyle or currentBookStyle
+// nonGlobalStyleMerged: libraryStyleMerged or currentBookStyleMerged, corresponding to globalStyle
+// nameInForm: base name of value-to-be-set in the FormElements objects
+// nameInStyleObjects: name of object representing value-to-be-set in nonGlobalStyle and nonGlobalStyleMerged and globalStyle
+function setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, baseNameInForm, nameInStyleObjects) {
+    let bookNameInForm = `book${baseNameInForm}`;
+    let bookOverrideNameInForm = `${bookNameInForm}override`;
+
+    let globalNameInForm = `global${baseNameInForm}`;
+
+    bookFormElements[bookNameInForm].setAttribute("value", nonGlobalStyleMerged[nameInStyleObjects].value);
+    bookFormElements[bookNameInForm].value = nonGlobalStyleMerged[nameInStyleObjects].value;
+    setCheckbox(bookFormElements[bookOverrideNameInForm], nonGlobalStyleMerged[nameInStyleObjects].override);
+    setCheckbox(bookFormElements[`${bookNameInForm}global`], nonGlobalStyle[nameInStyleObjects].useGlobal);
+    setEnabledness(bookFormElements[bookNameInForm], nonGlobalStyle[nameInStyleObjects].useGlobal);
+    setEnabledness(bookFormElements[bookOverrideNameInForm], nonGlobalStyle[nameInStyleObjects].useGlobal);
+
+    globalFormElements[globalNameInForm].setAttribute("value", globalStyle[nameInStyleObjects].value);
+    globalFormElements[globalNameInForm].value = globalStyle[nameInStyleObjects].value;
+    setCheckbox(globalFormElements[`${globalNameInForm}override`], globalStyle[nameInStyleObjects].override);
+}
+
+// bookFormElements: HTML #booksavechanges form elements object from style-editor.html
+// globalFormElements: HTML #globalsavechanges form elements object from style-editor.html
+// nonGlobalStyle: libraryStyle or currentBookStyle
+// nonGlobalStyleMerged: libraryStyleMerged or currentBookStyleMerged, corresponding to globalStyle
+// nameInForm: base name of value-to-be-set in the FormElements objects
+// nameInStyleObjects: name of object representing value-to-be-set in nonGlobalStyle and nonGlobalStyleMerged and globalStyle
+function setEditorValueWithTextArea(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, baseNameInForm, nameInStyleObjects) {
+    let bookNameInForm = `book${baseNameInForm}`;
+
+    bookFormElements[bookNameInForm].textContent = nonGlobalStyleMerged[nameInStyleObjects].value;
+    setCheckbox(bookFormElements[bookNameInForm], nonGlobalStyle[nameInStyleObjects].useGlobal);
+    setCheckbox(bookFormElements[`${bookNameInForm}global`], nonGlobalStyle[nameInStyleObjects].useGlobal);
+    setEnabledness(bookFormElements[bookNameInForm], nonGlobalStyle[nameInStyleObjects].useGlobal);
+
+    globalFormElements[`global${baseNameInForm}`].textContent = globalStyle[nameInStyleObjects].value;
+}
+
+// doc: style editor HTML doc to set editor values in
+// type: string, "library" or "section"
+function setEditorValues(doc, type) {
+    let nonGlobalStyle;
+    let nonGlobalStyleMerged;
+    if (type === "library")  {
+        nonGlobalStyle = libraryStyle;
+        nonGlobalStyleMerged = libraryStyleMerged;
+    } else {
+        nonGlobalStyle = currentBookStyle;
+        nonGlobalStyleMerged = currentBookStyleMerged;
+    }
+
+    let bookFormElements = doc.getElementById("booksavechanges").form.elements;
+    let globalFormElements = doc.getElementById("globalsavechanges").form.elements;
+
+    // Set values
+
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "font", "font");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "fontsize", "fontSize");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "color", "textColor");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "linkcolor", "linkColor");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "linespacing", "lineSpacing");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "paragraphspacing", "paragraphSpacing");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "indentation", "indentation");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "imagesizecap", "imageSizeCap");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "bgcolor", "backgroundColor");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "uicolor", "uiColor");
+    setEditorValueWithOverrideCheckbox(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "margins", "margins");
+
+    setEditorValueWithTextArea(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "lightcss", "customCssNoOverride");
+    setEditorValueWithTextArea(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "heavycss", "customCssOverrideBook");
+    setEditorValueWithTextArea(bookFormElements, globalFormElements, nonGlobalStyle, nonGlobalStyleMerged, "uicss", "customCssOverrideUi");
+
+    // Set lingering book/library editor values
+
+    doc.querySelectorAll("#bookfont option[selected]").forEach(preexistingSelectedFont => preexistingSelectedFont.removeAttribute("selected"));
+    doc.querySelector(`#bookfont option[value='${nonGlobalStyleMerged.font.value}']`).setAttribute("selected", "selected");
+
+    bookFormElements.bookimagesizecap.checked = nonGlobalStyleMerged.imageSizeCap.value;
+
+    // Set lingering global editor values
+
+    doc.querySelectorAll("#globalfont option[selected]").forEach(preexistingSelectedFont => preexistingSelectedFont.removeAttribute("selected"));
+    doc.querySelector(`#globalfont option[value='${globalStyle.font.value}']`).setAttribute("selected", "selected");
+
+    globalFormElements.globalimagesizecap.checked = globalStyle.imageSizeCap.value;
 }
 
 // doc: HTML doc to inject stylesheet into
@@ -823,8 +934,8 @@ function injectStyleEditorStylesheet(doc, docId) {
     style.insertRule(".styleeditor {border: 0.2em solid slateblue; margin: 0.2em; padding: 0.2em;}");
     style.insertRule(".presetselector {display: inline;}");
     style.insertRule(".options {border-collapse: collapse;}");
-    style.insertRule(".option {border: 0.2em solid slateblue;}");
-    style.insertRule(".optiondescription {text-align: center; margin: 0;}");
+    style.insertRule(".option {border: 0.2em solid slateblue; text-align: center;}");
+    style.insertRule(".optiondescription {margin: 0;}");
     style.insertRule(".optionselector, .presetselector {color: inherit; border-color: slateblue; background: darkslateblue;}"); // It's unclear why inherit fails for border-color and background; work that out maybe
     style.insertRule(".cssbox {box-sizing: border-box; width: 100%;}");
     style.insertRule("#booksavechanges, #globalsavechanges {width: 100%;}")
@@ -848,6 +959,7 @@ function injectStyleEditorUiScript(doc) {
 // Returns string representation of doc, now customized for display to the user
 function prepareStyleEditorDocForDisplay(doc, docId, type) {
     adjustIfInLibrary(doc, type);
+    setEditorValues(doc, type);
     injectStyleEditorStylesheet(doc, docId);
     injectStyleEditorUiScript(doc);
     return new XMLSerializer().serializeToString(doc);
@@ -909,7 +1021,7 @@ function getMergedStyle(nonGlobalStyle) {
         if (nonGlobalStyle[styleName].useGlobal) {
             mergedStyle[styleName] = globalStyle[styleName];
         } else {
-            mergedStyle[styleName] = nonGlobalStyle[styleName];
+            mergedStyle[styleName] = structuredClone(nonGlobalStyle[styleName]);
             delete mergedStyle[styleName]["useGlobal"];
         }
     }
@@ -961,10 +1073,10 @@ function updatePageStyle(doc, pageType, liveDisplay) {
             let styleEditorFramePreexistingStyles = Array.from(styleEditorDoc.querySelectorAll("link[rel=stylesheet]"));
             injectStyleEditorStylesheet(styleEditorDoc, styleEditorLibrarySourceId);
             styleEditorFramePreexistingStyles.at(-1).remove();
+            setEditorValues(styleEditorDoc, "library");
             if (!liveDisplay) {
                 styleEditorFrame.setAttribute("srcdoc", new XMLSerializer().serializeToString(styleEditorDoc));
             }
-            // This should also update the inputs' values to MergedStyle
         }
     } else if (pageType === "section") {
         injectBookSectionStylesheets(doc, currentSectionSourceId, currentSectionStyleInfo.misc.writingMode, currentSectionStyleInfo.classes.ignoreStyles, currentSectionStyleInfo.ids.header, currentSectionStyleInfo.ids.footer, currentSectionStyleInfo.ids.closeButton, currentSectionStyleInfo.ids.styleEditorButton, currentSectionStyleInfo.ids.returnToTopButton, currentSectionStyleInfo.classes.navigation, currentSectionStyleInfo.ids.section, currentSectionStyleInfo.classes.html, currentSectionStyleInfo.ids.styleEditor);
@@ -980,10 +1092,10 @@ function updatePageStyle(doc, pageType, liveDisplay) {
             let styleEditorFramePreexistingStyles = Array.from(styleEditorDoc.querySelectorAll("link[rel=stylesheet]"));
             injectStyleEditorStylesheet(styleEditorDoc, styleEditorBookSourceId);
             styleEditorFramePreexistingStyles.at(-1).remove();
+            setEditorValues(styleEditorDoc, "section");
             if (!liveDisplay) {
                 styleEditorFrame.setAttribute("srcdoc", new XMLSerializer().serializeToString(styleEditorDoc));
             }
-            // This should also update the inputs' values to MergedStyle
         }
     } else {
         let errorMessage = `Error: received style-update command of page type '${pageType}'. To fix reader functionality, please refresh the page. (This should never happen; please report if it does.)`;
@@ -998,12 +1110,12 @@ async function regenerateStylesInPageSources() {
     let serializer = new XMLSerializer();
 
     let libraryDoc = parser.parseFromString(await librarySource, "text/html");
-    updatePageStyle(libraryDoc, "library");
+    updatePageStyle(libraryDoc, "library", false);
     librarySource = new Promise((resolve, _reject) => resolve(serializer.serializeToString(libraryDoc)));
 
     if (currentSectionSource) {
         let sectionDoc = parser.parseFromString(currentSectionSource, "application/xhtml+xml");
-        updatePageStyle(sectionDoc, "section");
+        updatePageStyle(sectionDoc, "section", false);
         currentSectionSource = serializer.serializeToString(sectionDoc);
     }
 }
@@ -1013,7 +1125,7 @@ async function regenerateStylesInPageSources() {
 // editorType: string, "library" or "section"
 function updateStyles(newStyle, newStyleType, editorType) {
     saveStyle(newStyle, newStyleType, editorType);
-    updatePageStyle(bookIframe.contentWindow.document, editorType);
+    updatePageStyle(bookIframe.contentWindow.document, editorType, true);
     regenerateStylesInPageSources();
 }
 
@@ -1206,7 +1318,19 @@ async function openBook(file) {
     } else {
         currentBookStyle = {
             "font": {"useGlobal": true},
+            "fontSize": {"useGlobal": true},
+            "textColor": {"useGlobal": true},
+            "linkColor": {"useGlobal": true},
+            "lineSpacing": {"useGlobal": true},
+            "paragraphSpacing": {"useGlobal": true},
+            "indentation": {"useGlobal": true},
+            "imageSizeCap": {"useGlobal": true},
+            "backgroundColor": {"useGlobal": true},
+            "uiColor": {"useGlobal": true},
+            "margins": {"useGlobal": true},
             "customCssNoOverride": {"useGlobal": true},
+            "customCssOverrideBook": {"useGlobal": true},
+            "customCssOverrideUi": {"useGlobal": true},
         };
     }
     currentBookStyleMerged = getMergedStyle(currentBookStyle);
@@ -1303,13 +1427,71 @@ browser.storage.local.get({
             "value": "initial",
             "override": false,
         },
+        "fontSize": {
+            "value": Number(getComputedStyle(document.documentElement)["font-size"].slice(0, -2)),
+            "override": false,
+        },
+        "textColor": {
+            "value": "#FFD700", // gold
+            "override": false,
+        },
+        "linkColor": {
+            "value": "#FF4500", // orangered
+            "override": false,
+        },
+        "lineSpacing": {
+            "value": 1.2,
+            "override": false,
+        },
+        "paragraphSpacing": {
+            "value": 1,
+            "override": false,
+        },
+        "indentation": {
+            "value": 0,
+            "override": false,
+        },
+        "imageSizeCap": {
+            "value": false,
+            "override": false,
+        },
+        "backgroundColor": {
+            "value": "#483D8B", // darkslateblue
+            "override": false,
+        },
+        "uiColor": {
+            "value": "#6A5ACD", // slateblue
+            "override": false,
+        },
+        "margins": {
+            "value": 8,
+            "override": false,
+        },
         "customCssNoOverride": {
             "value": "",
         },
+        "customCssOverrideBook": {
+            "value": "",
+        },
+        "customCssOverrideUi": {
+            "value": "",
+        }
     },
     "library": {
         "font": {"useGlobal": true},
+        "fontSize": {"useGlobal": true},
+        "textColor": {"useGlobal": true},
+        "linkColor": {"useGlobal": true},
+        "lineSpacing": {"useGlobal": true},
+        "paragraphSpacing": {"useGlobal": true},
+        "indentation": {"useGlobal": true},
+        "imageSizeCap": {"useGlobal": true},
+        "backgroundColor": {"useGlobal": true},
+        "uiColor": {"useGlobal": true},
+        "margins": {"useGlobal": true},
         "customCssNoOverride": {"useGlobal": true},
+        "customCssOverrideBook": {"useGlobal": true},
+        "customCssOverrideUi": {"useGlobal": true},
     },
 }).then(stylesObject => {
     globalStyle = stylesObject.global;
